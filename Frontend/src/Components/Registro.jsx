@@ -16,8 +16,6 @@ import { auth, db } from "../firebase/client";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import ToastStack from "./ToastStack";
 
-const TERMS_FILE = 'TERMINOSYSERVICIOSMIAGRO.pdf';
-const TERMS_HREF = `${import.meta.env.BASE_URL}${encodeURIComponent(TERMS_FILE)}`;
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -28,20 +26,18 @@ export default function Registro() {
     password: '',
     confirmPassword: ''
   });
-  const [termsAccepted, setTermsAccepted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toasts, setToasts] = useState([]);
   const navigate = useNavigate();
 
-  // ⬇️ ref + animación como en Login
   const formRef = useRef(null);
   useEffect(() => {
     const el = formRef.current;
     if (!el) return;
-    void el.offsetWidth;           // fuerza reflow
-    el.classList.add('reveal-in'); // activa la animación del form
+    void el.offsetWidth;
+    el.classList.add('reveal-in');
   }, []);
 
   const showToast = (message, opts = {}) => {
@@ -63,7 +59,6 @@ export default function Registro() {
   };
 
   const validarCampos = () => {
-    if (!termsAccepted) return 'Debes aceptar los Términos y Condiciones.';
     if (!values.nombre_completo || !values.email || !values.password || !values.confirmPassword)
       return 'Todos los campos son obligatorios';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) return 'Correo inválido';
@@ -103,7 +98,6 @@ export default function Registro() {
       await updateProfile(cred.user, { displayName: values.nombre_completo });
       await crearDocumentoUsuarioSiNoExiste(cred.user.uid);
       showToast('Registro exitoso', { variant: 'success', title: 'Listo', icon: '✅' });
-      // Opcional: llevar al login
       // navigate('/userlogin');
     } catch (error) {
       const msg = firebaseErrorToMessage(error);
@@ -167,9 +161,9 @@ export default function Registro() {
           <p className="login-sub">Completa el formulario para crear tu cuenta</p>
 
           <form
-            ref={formRef}                 // ⬅️ importante para la animación
+            ref={formRef}
             onSubmit={handleSubmit}
-            className="login-form"        // ⬅️ se combina con .reveal-in en el montaje
+            className="login-form"
             noValidate
           >
             <div className="mgreg-password">
@@ -235,9 +229,6 @@ export default function Registro() {
                 {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
               </button>
             </div>
-
-            {/* Términos y condiciones (lo exiges en validarCampos) */}
-
 
             <button
               type="submit"
