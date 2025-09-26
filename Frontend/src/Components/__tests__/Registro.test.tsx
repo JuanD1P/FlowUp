@@ -10,7 +10,7 @@ import Registro from '../Registro';
 // MOCKS
 // =====================
 
-// firebase/client (evitar initializeApp real)
+// firebase/client
 vi.mock('../../firebase/client', () => ({
   auth: {},
   db: {},

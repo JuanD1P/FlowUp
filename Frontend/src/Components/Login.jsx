@@ -35,11 +35,11 @@ export default function Login() {
     localStorage.removeItem("user-role");
   }, []);
 
-  // activa la animación cuando el form se monta
+
   useEffect(() => {
     const el = formRef.current;
     if (!el) return;
-    void el.offsetWidth; // fuerza reflow
+    void el.offsetWidth; 
     el.classList.add("reveal-in");
   }, []);
 
@@ -97,6 +97,7 @@ export default function Login() {
       });
 
       if (data.rol === "ADMIN") navigate("/Admin");
+      else if (data.rol === "USEREN") navigate("/InicioEntrenador");
       else navigate("/Inicio");
       window.location.reload();
     } catch (err) {
@@ -138,6 +139,7 @@ export default function Login() {
       }
 
       if (data.rol === "ADMIN") navigate("/Admin");
+      else if (data.rol === "USEREN") navigate("/InicioEntrenador");
       else navigate("/Inicio");
       window.location.reload();
     } catch (error) {

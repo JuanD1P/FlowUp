@@ -7,6 +7,8 @@ import ProtectedRoute from './Components/PrivateRoute';
 import Admin from './Components/Admin';
 import Navbar from './Components/Navbar';
 import Footer from './Components/Footer';
+import InicioEntrenador from './Components/InicioEntrenador';
+
 
 function App() {
     return (
@@ -27,7 +29,7 @@ function App() {
                     } />
 
 
-                {/* RUTAS PARA LOS USUARIOS */}   
+                {/* RUTAS PARA LOS NADADORES */}   
 
                 
                     <Route path="/Inicio" element={
@@ -37,9 +39,17 @@ function App() {
                     } />
 
 
-                </Route>
 
-    
+                {/* RUTAS PARA LOS ENTRENADORES */}   
+
+                
+                    <Route path="/InicioEntrenador" element={
+                        <ProtectedRoute allowedRoles={['USEREN']}>
+                            <InicioEntrenador />
+                        </ProtectedRoute>
+                    } />
+
+                    </Route>
 
                 {/* RUTA NO ENCONTRADA */}
                 <Route path="*" element={<NotFound />} />

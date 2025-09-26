@@ -120,6 +120,7 @@ describe('Login', () => {
 
     expect(
       await screen.findByText(/Contraseña incorrecta/i)
+      
     ).toBeInTheDocument();
   });
 });

@@ -19,13 +19,16 @@ import ToastStack from "./ToastStack";
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
+const INITIAL_VALUES = {
+  nombre_completo: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  rol: 'USER'
+};
+
 export default function Registro() {
-  const [values, setValues] = useState({
-    nombre_completo: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
-  });
+  const [values, setValues] = useState(INITIAL_VALUES);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -77,11 +80,25 @@ export default function Registro() {
       await setDoc(ref, {
         nombre: values.nombre_completo || dataExtra.displayName || "",
         email: values.email || dataExtra.email || "",
-        rol: "USER",
+        rol: values.rol || "USER",
         activo: true,
         creadoEn: serverTimestamp(),
         ...dataExtra,
       });
+    }
+  };
+
+  const resetForm = () => {
+    setValues(INITIAL_VALUES);
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    if (formRef.current) {
+      formRef.current.classList.remove('reveal-in');
+      void formRef.current.offsetWidth;
+      formRef.current.classList.add('reveal-in');
+      if (typeof formRef.current.reset === 'function') {
+        formRef.current.reset();
+      }
     }
   };
 
@@ -98,7 +115,7 @@ export default function Registro() {
       await updateProfile(cred.user, { displayName: values.nombre_completo });
       await crearDocumentoUsuarioSiNoExiste(cred.user.uid);
       showToast('Registro exitoso', { variant: 'success', title: 'Listo', icon: '✅' });
-      // navigate('/userlogin');
+      resetForm();
     } catch (error) {
       const msg = firebaseErrorToMessage(error);
       showToast(msg, { variant: 'error', title: 'No se pudo registrar' });
@@ -120,6 +137,7 @@ export default function Registro() {
       });
       if (info?.isNewUser) {
         showToast('Registro exitoso con Google', { variant: 'success', title: 'Listo', icon: '✅' });
+        resetForm();
       } else {
         showToast('Correo ya registrado', { variant: 'warning', title: 'Aviso' });
       }
@@ -160,12 +178,7 @@ export default function Registro() {
           <h2 className='login-title'>Registra tus datos</h2>
           <p className="login-sub">Completa el formulario para crear tu cuenta</p>
 
-          <form
-            ref={formRef}
-            onSubmit={handleSubmit}
-            className="login-form"
-            noValidate
-          >
+          <form ref={formRef} onSubmit={handleSubmit} className="login-form" noValidate>
             <div className="mgreg-password">
               <input
                 id="nombre"
@@ -200,12 +213,9 @@ export default function Registro() {
                 required
                 autoComplete="new-password"
               />
-              <button
-                type="button"
-                className="mgreg-toggle"
+              <button type="button" className="mgreg-toggle"
                 onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-              >
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>
                 {showPassword ? <FaEyeSlash /> : <FaEye />}
               </button>
             </div>
@@ -220,27 +230,26 @@ export default function Registro() {
                 required
                 autoComplete="new-password"
               />
-              <button
-                type="button"
-                className="mgreg-toggle"
+              <button type="button" className="mgreg-toggle"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label={showConfirmPassword ? "Ocultar confirmación" : "Mostrar confirmación"}
-              >
+                aria-label={showConfirmPassword ? "Ocultar confirmación" : "Mostrar confirmación"}>
                 {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
               </button>
             </div>
 
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={isSubmitting}
-            >
+            <div className="mgreg-password">
+              <div className="mgreg-role" role="group" aria-label="Tipo de usuario">
+                <button type="button" aria-pressed={values.rol === "USER"} onClick={() => setValues({ ...values, rol: "USER" })}>Nadador</button>
+                <button type="button" aria-pressed={values.rol === "USEREN"} onClick={() => setValues({ ...values, rol: "USEREN" })}>Entrenador</button>
+              </div>
+            </div>
+
+
+            <button type="submit" className="btn-primary" disabled={isSubmitting}>
               {isSubmitting ? "Registrando..." : "Crear cuenta"}
             </button>
 
-            <div className="divider">
-              <span>o</span>
-            </div>
+            <div className="divider"><span>o</span></div>
           </form>
 
           <button
