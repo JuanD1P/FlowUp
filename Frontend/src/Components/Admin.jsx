@@ -6,7 +6,7 @@ import "@sweetalert2/themes/borderless/borderless.css";
 import logo from "../ImagenesP/ImagenesLogin/ADMINLOGO.png";
 import "./DOCSS/Admin.css";
 
-// Axios con Bearer automático
+
 const api = axios.create({
   baseURL: "http://localhost:3000",
   withCredentials: true,
