@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700&display=swap');
+
+.fu-nav {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  backdrop-filter: blur(12px);
+  background: linear-gradient(180deg, rgba(240,245,255,.75), rgba(240,245,255,.35));
+  border-bottom: 1px solid rgba(15,23,42,.06);
+}
+
+.fu-nav__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px 16px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.fu-nav__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fu-nav__logo {
+  width: 100px;
+  height: auto;
+  object-fit: contain;
+}
+
+.fu-nav__brandtxt {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: #111827; 
+  margin-left: 6px;
+
+}
+
+.fu-nav__links {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.fu-link {
+  background: transparent;
+  border: 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #4b5563;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.fu-link:hover {
+  color: #0b1220;
+  background: rgba(2,132,199,.08);
+}
+
+.fu-nav__actions {
+  display: flex;
+  align-items: center;
+}
+
+.fu-btn {
+  border: 0;
+  font-size: 14px;
+  border-radius: 999px;
+  padding: 8px 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fu-btn--primary {
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(37,99,235,.25);
+}
+
+@media (max-width: 960px) {
+  .fu-nav__inner {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "brand actions"
+      "links links";
+    row-gap: 6px;
+  }
+  .fu-nav__brand { grid-area: brand; }
+  .fu-nav__links { grid-area: links; overflow-x: auto; justify-content: flex-start; }
+  .fu-nav__actions { grid-area: actions; }
+}
