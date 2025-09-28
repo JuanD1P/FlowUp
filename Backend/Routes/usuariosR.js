@@ -19,7 +19,7 @@ userRouter.put("/usuarios/:id/rol", async (req, res) => {
   try {
     const { id } = req.params;
     const { rol } = req.body || {};
-    if (!rol || !["USER", "ADMIN"].includes(rol)) {
+    if (!rol || !["USER", "ADMIN", "USEREN"].includes(rol)) {
       return res.status(400).json({ error: "Rol inválido" });
     }
 

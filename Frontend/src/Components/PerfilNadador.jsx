@@ -193,19 +193,6 @@ export default function PerfilNadador() {
   };
 
   const validate = () => {
-    if (!values.nombre?.trim()) return "El nombre es obligatorio.";
-    if (!values.email?.trim()) return "El email es obligatorio.";
-    if (!values.fechaNacimiento) return "La fecha de nacimiento es obligatoria.";
-    if (isNaN(Date.parse(values.fechaNacimiento))) return "Fecha inválida.";
-    const e = Number(edad);
-    if (!Number.isFinite(e) || e < 10 || e > 100) return "La edad debe estar entre 10 y 100 años.";
-    if (!values.genero) return "Selecciona un género.";
-    const h = Number(values.alturaCm);
-    if (!Number.isFinite(h) || h < 120 || h > 230) return "Altura inválida (120–230 cm).";
-    const p = Number(values.pesoKg);
-    if (!Number.isFinite(p) || p < 30 || p > 200) return "Peso inválido (30–200 kg).";
-    if (values.fcReposo !== "" && (Number(values.fcReposo) < 30 || Number(values.fcReposo) > 120)) return "FC inválida (30–120 bpm).";
-    if (!values.categoria) return "Selecciona una categoría.";
     return null;
   };
 
