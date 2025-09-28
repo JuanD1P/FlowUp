@@ -8,7 +8,7 @@ import Admin from './Components/Admin';
 import Navbar from './Components/Navbar';
 import Footer from './Components/Footer';
 import InicioEntrenador from './Components/InicioEntrenador';
-
+import PerfilNadador from './Components/PerfilNadador';
 
 function App() {
     return (
@@ -35,6 +35,12 @@ function App() {
                     <Route path="/Inicio" element={
                         <ProtectedRoute allowedRoles={['USER']}>
                             <Inicio />
+                        </ProtectedRoute>
+                    } />
+
+                    <Route path="/PerfilNadador" element={
+                        <ProtectedRoute allowedRoles={['USER']}>
+                            <PerfilNadador />
                         </ProtectedRoute>
                     } />
 

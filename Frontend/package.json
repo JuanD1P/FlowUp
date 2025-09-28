@@ -13,6 +13,7 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@multiavatar/multiavatar": "^1.0.7",
     "@sweetalert2/themes": "^5.0.27",
     "axios": "^1.7.2",
     "bootstrap": "^5.3.3",

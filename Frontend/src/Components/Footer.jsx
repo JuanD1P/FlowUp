@@ -37,7 +37,7 @@ const Footer = () => {
         <p>
           <span className="fu-foot__sep">FlowUp</span>
           <span className="fu-foot__sep">Calle Falsa 123</span>
-          <span className="fu-foot__sep">Bogotá, Colombia</span>
+          <span className="fu-foot__sep">Facatativa, Colombia</span>
           <span className="fu-foot__sep">contacto@flowup.app</span>
           <span className="fu-foot__sep">+57 300 000 0000</span>
         </p>

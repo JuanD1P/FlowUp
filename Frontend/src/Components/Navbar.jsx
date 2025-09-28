@@ -34,8 +34,9 @@ const Navbar = () => {
       { label: "Opción 2 Entrenador", to: "/entrenador/opcion-2" },
     ],
     USER: [
-      { label: "Opción 1 Nadador", to: "/inicio/opcion-1" },
-      { label: "Opción 2 Nadador", to: "/inicio/opcion-2" },
+      { label: "Inicio", to: "/Inicio" },
+      { label: "Mi Perfil", to: "/PerfilNadador" },
+      
     ],
   };
 
@@ -59,9 +60,9 @@ const Navbar = () => {
   return (
     <header className="fu-nav">
       <div className="fu-nav__inner">
-        <div className="fu-nav__brand" onClick={() => go("/")} role="button" tabIndex={0}>
+        <div className="fu-nav__brand" onClick={() => go("/Inicio")} role="button" tabIndex={0}>
           <img src={logoSrc} alt="FlowUp" className="fu-nav__logo" />
-          <span className="fu-nav__brandtxt">FlowUp</span>
+
           <span className="fu-nav__role">{roleText}</span>
         </div>
 
