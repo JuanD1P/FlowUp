@@ -140,11 +140,7 @@ export default function Admin() {
           </div>
         </div>
 
-        <div className="admin-header-actions">
-          <button onClick={() => navigate("/GraficasA")} className="btn accent">
-            DATOS PRODUCTOS
-          </button>
-        </div>
+        
       </header>
 
       <main className="admin-content">
@@ -162,7 +158,7 @@ export default function Admin() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>ID</th>
+                  
                   <th>Nombre</th>
                   <th>Email</th>
                   <th>Rol</th>
@@ -181,7 +177,7 @@ export default function Admin() {
                 ) : usuarios.length ? (
                   usuarios.map((u) => (
                     <tr key={u.id}>
-                      <td>{u.id}</td>
+                      
                       <td className="cell-strong">{u.nombre_completo || u.nombre || "-"}</td>
                       <td>{u.email}</td>
                       <td>
@@ -190,7 +186,8 @@ export default function Admin() {
                           value={u.rol || "USER"}
                           onChange={(e) => cambiarRol(u.id, u.rol, e.target.value)}
                         >
-                          <option value="USER">USER</option>
+                          <option value="USER">NADADOR</option>
+                          <option value="USEREN">ENTRENADOR</option>
                           <option value="ADMIN">ADMIN</option>
                         </select>
                       </td>
