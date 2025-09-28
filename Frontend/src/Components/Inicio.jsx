@@ -78,6 +78,10 @@ export default function Inicio() {
 
   return (
     <div className="in-page">
+
+      <section className="in-card in-welcome">
+        <h2>¡Bienvenido, <strong>{data.nombre || "nadador"}</strong>!</h2>
+      </section>
       {incompleto && (
         <section className="in-hero">
           <div className="in-hero-waves" aria-hidden="true">
@@ -149,13 +153,7 @@ export default function Inicio() {
         </section>
       )}
 
-      <section className="in-card in-welcome">
-        <h2>Inicio del Nadador</h2>
-        <p>
-          ¡Bienvenido, <strong>{data.nombre || "nadador"}</strong>! Aquí podrás
-          seguir tu progreso, tus entrenamientos y tus logros.
-        </p>
-      </section>
+
     </div>
   );
 }

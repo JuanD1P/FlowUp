@@ -36,7 +36,7 @@ const Navbar = () => {
     USER: [
       { label: "Inicio", to: "/Inicio" },
       { label: "Mi Perfil", to: "/PerfilNadador" },
-      
+      { label: "Mis Entrenamientos", to: "/EntrenamientoNadador" },
     ],
   };
 

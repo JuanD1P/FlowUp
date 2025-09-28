@@ -9,6 +9,7 @@ import Navbar from './Components/Navbar';
 import Footer from './Components/Footer';
 import InicioEntrenador from './Components/InicioEntrenador';
 import PerfilNadador from './Components/PerfilNadador';
+import EntrenamientoNadador from './Components/EntrenamientoNadador';
 
 function App() {
     return (
@@ -44,7 +45,11 @@ function App() {
                         </ProtectedRoute>
                     } />
 
-
+                    <Route path="/EntrenamientoNadador" element={
+                        <ProtectedRoute allowedRoles={['USER']}>
+                            <EntrenamientoNadador />
+                        </ProtectedRoute>
+                    } />
 
                 {/* RUTAS PARA LOS ENTRENADORES */}   
 
