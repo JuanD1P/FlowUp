@@ -21,6 +21,7 @@ const Navbar = () => {
     if (role === "ADMIN") return " | Panel de Administrador";
     if (role === "USEREN") return " | Panel de Entrenador";
     if (role === "USER") return " | Panel de Nadador";
+    
     return "";
   }, [role]);
 
@@ -37,6 +38,7 @@ const Navbar = () => {
       { label: "Inicio", to: "/Inicio" },
       { label: "Mi Perfil", to: "/PerfilNadador" },
       { label: "Mis Entrenamientos", to: "/EntrenamientoNadador" },
+      { label: "Recomendaciones", to: "/Recomendaciones" },
     ],
   };
 

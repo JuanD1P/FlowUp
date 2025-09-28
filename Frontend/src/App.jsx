@@ -10,6 +10,7 @@ import Footer from './Components/Footer';
 import InicioEntrenador from './Components/InicioEntrenador';
 import PerfilNadador from './Components/PerfilNadador';
 import EntrenamientoNadador from './Components/EntrenamientoNadador';
+import Recomendaciones from './Components/Recomendaciones';
 
 function App() {
     return (
@@ -48,6 +49,12 @@ function App() {
                     <Route path="/EntrenamientoNadador" element={
                         <ProtectedRoute allowedRoles={['USER']}>
                             <EntrenamientoNadador />
+                        </ProtectedRoute>
+                    } />
+
+                    <Route path="/Recomendaciones" element={
+                        <ProtectedRoute allowedRoles={['USER']}>
+                            <Recomendaciones />
                         </ProtectedRoute>
                     } />
 
