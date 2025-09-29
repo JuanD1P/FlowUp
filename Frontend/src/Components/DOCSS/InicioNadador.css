@@ -219,7 +219,7 @@ body.page-inicio{
   pointer-events: none;
   background:
     var(--inicio-bg-tint),
-    url("/ImagenFondos/fondo_IniNad.jpg") center/cover no-repeat;
+    url("/ImagenFondos/PurebaFondp.png") center/cover no-repeat;
   /* Si en iOS no quieres "fixed", elimina la línea de abajo */
   background-attachment: fixed;
 }
