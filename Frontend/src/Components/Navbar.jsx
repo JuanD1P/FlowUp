@@ -27,8 +27,8 @@ const Navbar = () => {
 
   const MENU_BY_ROLE = {
     ADMIN: [
-      { label: "Opción 1 Admin", to: "/admin/opcion-1" },
-      { label: "Opción 2 Admin", to: "/admin/opcion-2" },
+      { label: "Usuarios", to: "/Admin" },
+      { label: "Equipos", to: "/Admin/equipos" },
     ],
     USEREN: [
       { label: "Opción 1 Entrenador", to: "/entrenador/opcion-1" },

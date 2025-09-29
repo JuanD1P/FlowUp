@@ -20,6 +20,12 @@ export default function Inicio(){
   const [sesiones,setSesiones]=useState([]);
   const navigate=useNavigate();
 
+  /* ===== clave: clase en <body> solo en esta vista ===== */
+  useEffect(()=>{
+    document.body.classList.add("page-inicio");
+    return ()=> document.body.classList.remove("page-inicio");
+  },[]);
+
   useEffect(()=>{
     const unsub=onAuthStateChanged(auth,async(user)=>{
       if(!user){navigate("/userlogin");return}
@@ -36,8 +42,8 @@ export default function Inicio(){
   useEffect(()=>{
     if(!uid) return;
     const col=collection(db,"usuarios",uid,"entrenamientos");
-    const q=query(col,orderBy("startMs","desc"));
-    const off=onSnapshot(q,(snap)=>{setSesiones(snap.docs.map(d=>({id:d.id,...d.data()})))});
+    const qy=query(col,orderBy("startMs","desc"));
+    const off=onSnapshot(qy,(snap)=>{setSesiones(snap.docs.map(d=>({id:d.id,...d.data()})))});
     return()=>off();
   },[uid]);
 
@@ -50,7 +56,7 @@ export default function Inicio(){
 
   if(loading){
     return(
-      <div className="in-page">
+      <div className="in-page in-page--bg">
         <section className="in-hero skeleton"><div className="shimmer"/></section>
         <section className="in-card in-welcome">
           <div className="skeleton-line" style={{width:"40%"}}/>
@@ -76,7 +82,7 @@ export default function Inicio(){
   const maxT=Math.max(1,...durSeries);
 
   return(
-    <div className="in-page">
+    <div className="in-page in-page--bg">
       <section className="in-card in-welcome">
         <h2>¡Bienvenido, <strong>{data.nombre||"nadador"}</strong>!</h2>
       </section>
@@ -88,7 +94,7 @@ export default function Inicio(){
             <div className="in-hero-avatar">{avatarSrc?<img src={avatarSrc} alt="Avatar"/>:<div className="in-hero-avatar__ph"/>}</div>
             <div className="in-hero-texts">
               <h3>¡Tu perfil está casi listo!</h3>
-              <p>Has completado <strong>{progreso}%</strong>. Un perfil completo personaliza tus metas y la carga de entrenamiento.</p>
+              <p>Has completado el <strong>{progreso}%</strong>. Un perfil completo ayuda a personalizar tus metas y la carga de entrenamiento.</p>
               <div className="in-checklist">
                 {faltantes.length>0?faltantes.map((k)=>(<span key={k} className="in-chip"><span className="dot"/>{LABELS[k]}</span>))
                 :(<span className="in-chip ok"><span className="tick">✓</span> Todo al día</span>)}

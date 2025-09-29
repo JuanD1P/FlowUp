@@ -6,7 +6,6 @@ import "@sweetalert2/themes/borderless/borderless.css";
 import logo from "../ImagenesP/ImagenesLogin/ADMINLOGO.png";
 import "./DOCSS/Admin.css";
 
-
 const api = axios.create({
   baseURL: "http://localhost:3000",
   withCredentials: true,
@@ -139,8 +138,6 @@ export default function Admin() {
             <p className="admin-subtitle">Gestión de usuarios</p>
           </div>
         </div>
-
-        
       </header>
 
       <main className="admin-content">
@@ -158,9 +155,8 @@ export default function Admin() {
             <table className="admin-table">
               <thead>
                 <tr>
-                  
                   <th>Nombre</th>
-                  <th>Email</th>
+                  <th className="col-email">Email</th>
                   <th>Rol</th>
                   <th style={{ minWidth: 120 }}>Acciones</th>
                 </tr>
@@ -177,9 +173,10 @@ export default function Admin() {
                 ) : usuarios.length ? (
                   usuarios.map((u) => (
                     <tr key={u.id}>
-                      
-                      <td className="cell-strong">{u.nombre_completo || u.nombre || "-"}</td>
-                      <td>{u.email}</td>
+                      <td className="cell-strong">
+                        {u.nombre_completo || u.nombre || "-"}
+                      </td>
+                      <td className="col-email">{u.email}</td>
                       <td>
                         <select
                           className="admin-role-select"

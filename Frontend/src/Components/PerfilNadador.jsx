@@ -20,9 +20,9 @@ const GENDER_OPTS = [
 const CATEGORY_OPTS = [
   { value: "", label: "Selecciona…" },
   { value: "principiante", label: "Principiante" },
-  { value: "master", label: "Máster" },
-  { value: "competitivo", label: "Competitivo" },
-  { value: "elite", label: "Élite" }
+  { value: "medio", label: "Medio" },
+  { value: "alto", label: "Alto" },
+  { value: "altorendimiento", label: "Alto Rendimiento" }
 ];
 
 const INITIAL = {
@@ -354,7 +354,7 @@ return (
               <strong>{imc || "—"}</strong>
             </div>
             <div>
-              <span>FC en reposo (bpm)</span>
+              <span>Frecuencia Cardiaca en reposo (bpm)</span>
               <strong>{values.fcReposo || "—"}</strong>
             </div>
           </div>
