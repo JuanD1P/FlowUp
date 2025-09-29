@@ -14,6 +14,7 @@ const GENDER_OPTS = [
   { value: "masculino", label: "Masculino" },
   { value: "no_binario", label: "No binario" },
   { value: "prefiero_no_decir", label: "Prefiero no decir" }
+
 ];
 
 const CATEGORY_OPTS = [
