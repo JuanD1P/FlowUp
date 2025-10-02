@@ -1,0 +1,51 @@
+.verequipo-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.verequipo-title {
+  margin-bottom: 12px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.verequipo-error {
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+.verequipo-table-wrapper {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.verequipo-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.verequipo-table thead {
+  background: #f1f5f9;
+}
+
+.verequipo-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.verequipo-table td {
+  padding: 10px 12px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+.uid-cell {
+  font-family: monospace;
+  font-size: 13px;
+}

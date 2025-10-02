@@ -43,3 +43,26 @@ userRouter.delete("/usuarios/:id", async (req, res) => {
     res.status(500).json({ error: "No se pudo eliminar el usuario" });
   }
 });
+
+//Obtiene la lista de nadadores
+userRouter.get("/nadadores", async (req, res) => {
+  try {
+    const snap = await firestoreAdmin.collection("usuarios").where("rol", "==", "USER").get();
+    const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: "No se pudo obtener nadadores" });
+  }
+});
+
+// Obtiene los miembros del equipo
+userRouter.get("/equipos/:Id/miembros", async (req, res) => {
+  try {
+    const { Id } = req.params;
+    const snap = await firestoreAdmin.collection("usuarios").where("equipo", "==", Id).get();
+    const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: "No se pudo obtener los miembros del equipo" });
+  }
+});

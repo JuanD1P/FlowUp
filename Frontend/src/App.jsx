@@ -11,6 +11,8 @@ import InicioEntrenador from './Components/InicioEntrenador';
 import PerfilNadador from './Components/PerfilNadador';
 import EntrenamientoNadador from './Components/EntrenamientoNadador';
 import Recomendaciones from './Components/Recomendaciones';
+import AñadirNadadores from './Components/AñadirNadadores';
+import VerEquipo from './Components/VerEquipo';
 
 function App() {
     return (
@@ -64,6 +66,22 @@ function App() {
                     <Route path="/InicioEntrenador" element={
                         <ProtectedRoute allowedRoles={['USEREN']}>
                             <InicioEntrenador />
+                            
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/AñadirNadadores" element={
+                        <ProtectedRoute allowedRoles={['USEREN']}>
+                            <AñadirNadadores />
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/perfil/:id" element={
+                        <ProtectedRoute allowedRoles={['USEREN']}>
+                            <PerfilNadador />
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/VerEquipo" element={
+                        <ProtectedRoute allowedRoles={['USEREN']}>
+                            <VerEquipo />
                         </ProtectedRoute>
                     } />
 
