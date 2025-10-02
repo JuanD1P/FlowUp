@@ -1,0 +1,55 @@
+.nadadores-page {
+  padding: 16px;
+}
+
+.nadadores-page h2 {
+  margin-top: 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.nadadores-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.nadador-card {
+  border: 1px solid var(--border, #e6ebf2);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--card, #fff);
+  box-shadow: var(--shadow, 0 2px 8px rgba(16,24,40,.06));
+  transition: transform 0.15s ease;
+}
+
+.nadador-card:hover {
+  transform: translateY(-2px);
+}
+
+.nadador-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.nadador-header strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.nadador-header span {
+  color: var(--muted, #5b6576);
+  font-size: 13px;
+}
+
+.nadador-meta {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--ink, #0f172a);
+}
+
