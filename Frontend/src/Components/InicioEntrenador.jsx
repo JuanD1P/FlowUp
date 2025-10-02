@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
@@ -10,6 +9,8 @@ import {
   query,
   serverTimestamp,
   where,
+  doc,
+  setDoc,          
 } from "firebase/firestore";
 import { auth, db } from "../firebase/client";
 import "./DOCSS/InicioEntrenador.css";
@@ -35,7 +36,7 @@ export default function InicioEntrenador() {
   const [user, setUser] = useState(null);
   const [equipos, setEquipos] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Modal Crear Equipo
   const [openCreate, setOpenCreate] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
@@ -44,7 +45,7 @@ export default function InicioEntrenador() {
     let unsubAuth = null;
     let unsubEquipos = null;
 
-    unsubAuth = onAuthStateChanged(auth, (u) => {
+    unsubAuth = onAuthStateChanged(auth, async (u) => {
       if (!u) {
         setUser(null);
         setEquipos([]);
@@ -55,7 +56,24 @@ export default function InicioEntrenador() {
       setUser(u);
       setLoading(true);
 
-      // 🔹 Solo traemos los equipos que el usuario ha creado (ownerId == uid)
+      // ✅ Asegura que el COACH tenga su perfil con rol USEREN (tus reglas lo requieren)
+      try {
+        const coachRef = doc(db, "usuarios", u.uid);
+        await setDoc(
+          coachRef,
+          {
+            rol: "USEREN",
+            displayName: u.displayName || null,
+            email: u.email || null,
+            actualizadoEn: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (e) {
+        console.warn("No se pudo asegurar el rol USEREN del coach:", e);
+      }
+
+      // 🔹 Trae solo equipos creados por este coach
       const q = query(
         collection(db, "equipos"),
         where("ownerId", "==", u.uid),
@@ -65,13 +83,7 @@ export default function InicioEntrenador() {
       unsubEquipos = onSnapshot(
         q,
         (snap) => {
-          const rows = [];
-          snap.forEach((d) => {
-            const data = d.data();
-            if (data.ownerId === u.uid) {
-              rows.push({ id: d.id, ...data });
-            }
-          });
+          const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
           setEquipos(rows);
           setLoading(false);
         },
@@ -99,8 +111,12 @@ export default function InicioEntrenador() {
       ownerEmail: user.email || null,
       createdAt: serverTimestamp(),
       createdAtLocal: Date.now(),
-      swimmersCount: 0,
+      // Mantén ambos si quieres; la vista de VerEquipo usa `nombre` o `name`
+      nombre: name,
+      // Incluye al coach como miembro (importante para que los nadadores detecten su coach)
       miembros: [user.uid],
+      // Si no llevas este contador, lo puedes calcular desde miembros en la tarjeta
+      swimmersCount: 0,
     });
 
     setOpenCreate(false);
@@ -129,9 +145,7 @@ export default function InicioEntrenador() {
         </div>
       ) : equipos.length === 0 ? (
         <div className="card empty">
-          <div className="empty-icon" aria-hidden>
-            👥
-          </div>
+          <div className="empty-icon" aria-hidden>👥</div>
           <h3>No tienes equipos aún</h3>
           <p>Crea tu primer equipo para comenzar a gestionar nadadores</p>
           <button className="btn-primary" onClick={() => setOpenCreate(true)}>
@@ -164,6 +178,7 @@ export default function InicioEntrenador() {
           <button className="btn-ghost" onClick={() => setOpenCreate(false)}>
             Cancelar
           </button>
+        <div>
           <button
             className="btn-primary"
             onClick={crearEquipo}
@@ -171,6 +186,7 @@ export default function InicioEntrenador() {
           >
             Crear Equipo
           </button>
+        </div>
         </div>
       </Modal>
     </div>
@@ -180,17 +196,32 @@ export default function InicioEntrenador() {
 /** Tarjeta de Equipo */
 function EquipoCard({ equipo }) {
   const navigate = useNavigate();
+
+  // Si no mantienes swimmersCount, calcula desde `miembros` (resta 1 por el coach)
+  const miembrosCount =
+    typeof equipo.swimmersCount === "number"
+      ? equipo.swimmersCount
+      : Math.max(0, (equipo.miembros?.length || 0) - 1);
+
   return (
     <div className="card team">
       <div className="team-head">
-        <h4>{equipo.name}</h4>
-        <span className="pill">👥 {equipo.swimmersCount ?? 0}</span>
+        <h4>{equipo.name || equipo.nombre || "Equipo"}</h4>
+        <span className="pill">👥 {miembrosCount}</span>
       </div>
       <div className="team-accion">
-        <button className="btn-add"
-        onClick={() => navigate(`/AñadirNadadores?equipo=${equipo.id}`)}>＋ Añadir Nadador</button>
-        <button className="btn-view" 
-        onClick={() => navigate(`/VerEquipo?equipo=${equipo.id}`)}> Ver Equipo</button>
+        <button
+          className="btn-add"
+          onClick={() => navigate(`/AñadirNadadores?equipo=${equipo.id}`)}
+        >
+          ＋ Añadir Nadador
+        </button>
+        <button
+          className="btn-view"
+          onClick={() => navigate(`/VerEquipo?equipo=${equipo.id}`)}
+        >
+          Ver Equipo
+        </button>
       </div>
       <div className="team-meta">
         📅 Creado{" "}

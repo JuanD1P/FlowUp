@@ -1,7 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebase/client";
-import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  onSnapshot,
+  query,
+  orderBy,
+  where,       
+  getDocs,     
+  updateDoc,   
+  limit,      
+} from "firebase/firestore";
 import "./DOCSS/EntrenamientoNadador.css";
 
 const TIPOS=[{value:"agua",label:"Natación en agua"},{value:"tierra",label:"Fuerza/estabilidad"},{value:"otro",label:"Otro"}];
@@ -65,7 +76,11 @@ export default function EntrenamientoNadador(){
   const isNarrow=vw<860;
   const isTiny=vw<520;
 
-  // === Form principal (sin campos de estilo individuales) ===
+  // 👇 NUEVO: coaches dueños de equipos donde el atleta es miembro
+  const [coachIds, setCoachIds] = useState([]);
+  const BACKFILL_LIMIT = 25; // cuántos entrenos viejos completar con ownerIds
+
+  // === Form principal ===
   const [form,setForm]=useState({
     fecha:isoFecha(now),
     horaInicio:isoHora(now),
@@ -79,20 +94,30 @@ export default function EntrenamientoNadador(){
   });
 
   // === Bloques por estilo ===
-  const [bloques,setBloques]=useState([
-    { estilo:"Libre", series:1, metrosSerie:100, minutos:"" }
-  ]);
+  const [bloques,setBloques]=useState([{ estilo:"Libre", series:1, metrosSerie:100, minutos:"" }]);
 
-  // ====== Auth + historial ======
+  // ====== Auth + historial + equipos ======
   useEffect(()=>{
-    let off=onAuthStateChanged(auth,(u)=>{
+    let off = onAuthStateChanged(auth,(u)=>{
       if(u?.uid){
         setUid(u.uid);
+
+        // Historial del atleta
         const col=collection(db,"usuarios",u.uid,"entrenamientos");
         const qy=query(col,orderBy("startMs","desc"));
         const offSnap=onSnapshot(qy,(snap)=>{setHistorial(snap.docs.map((d)=>({id:d.id,...d.data()})))});
-        off=()=>offSnap();
-      }else{setUid("");setHistorial([])}
+
+        // Equipos donde es miembro → obtener ownerId (coach)
+        const qEq = query(collection(db,"equipos"), where("miembros","array-contains", u.uid));
+        const offTeams = onSnapshot(qEq, (snap) => {
+          const owners = Array.from(new Set(snap.docs.map(d => d.data()?.ownerId).filter(Boolean)));
+          setCoachIds(owners);
+        });
+
+        off = ()=>{ offSnap(); offTeams(); };
+      }else{
+        setUid(""); setHistorial([]); setCoachIds([]);
+      }
     });
     const onKey=(e)=>{if(e.key==="Escape"){setShowPulso(false)}};
     const onResize=()=>setVw(window.innerWidth);
@@ -100,6 +125,28 @@ export default function EntrenamientoNadador(){
     window.addEventListener("resize",onResize);
     return()=>{off&&off();window.removeEventListener("keydown",onKey);window.removeEventListener("resize",onResize)}
   },[]);
+
+  // 👇 NUEVO: backfill para entrenos sin ownerIds (últimos N)
+  useEffect(() => {
+    if (!uid || coachIds.length === 0) return;
+    (async () => {
+      try {
+        const col = collection(db, "usuarios", uid, "entrenamientos");
+        const qy = query(col, orderBy("startMs","desc"), limit(BACKFILL_LIMIT));
+        const snap = await getDocs(qy);
+        const ops = [];
+        snap.forEach(d => {
+          const data = d.data();
+          if (!Array.isArray(data.ownerIds) || data.ownerIds.length === 0) {
+            ops.push(updateDoc(d.ref, { ownerIds: coachIds }));
+          }
+        });
+        if (ops.length) await Promise.all(ops);
+      } catch (e) {
+        console.warn("Backfill ownerIds falló:", e);
+      }
+    })();
+  }, [uid, coachIds]);
 
   useEffect(()=>{ setIdx(0) },[historial.length]);
 
@@ -122,14 +169,11 @@ export default function EntrenamientoNadador(){
     return pace100Str(t, distanciaTotal);
   },[form.tipo,duracionMin,distanciaTotal]);
 
-  // Ritmo por bloque (si ingresan minutos por bloque)
-  const bloquesConCalculados = useMemo(()=>(
-    bloques.map(b=>{
-      const metros = (Number(b.series||0)*Number(b.metrosSerie||0))||0;
-      const min = Number(b.minutos||0);
-      return {...b, metrosTotales:metros, ritmo100: pace100Str(min, metros)};
-    })
-  ),[bloques]);
+  const bloquesConCalculados = useMemo(()=>(bloques.map(b=>{
+    const metros = (Number(b.series||0)*Number(b.metrosSerie||0))||0;
+    const min = Number(b.minutos||0);
+    return {...b, metrosTotales:metros, ritmo100: pace100Str(min, metros)};
+  })),[bloques]);
 
   // ====== Handlers ======
   const handleChange=(e)=>{const {name,value}=e.target;setForm((p)=>({...p,[name]:value}))};
@@ -137,13 +181,7 @@ export default function EntrenamientoNadador(){
   const setAhoraFin=()=>{const n=new Date();setForm((p)=>({...p,horaFin:isoHora(n)}))};
 
   const addBloque=()=>setBloques(b=>[...b,{estilo:"Libre",series:1,metrosSerie:100,minutos:""}]);
-  const updateBloque=(i,field,val)=>{
-    setBloques(prev=>{
-      const copy=[...prev];
-      copy[i]={...copy[i],[field]:val};
-      return copy;
-    });
-  };
+  const updateBloque=(i,field,val)=>{setBloques(prev=>{const copy=[...prev];copy[i]={...copy[i],[field]:val};return copy;});};
   const removeBloque=(i)=>setBloques(prev=>prev.filter((_,idx)=>idx!==i));
 
   const exportarCSV=()=>{if(!historial.length)return;const csv=toCSV(historial);const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="entrenamientos.csv";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);setToast("Exportado como CSV");setTimeout(()=>setToast(""),1800)};
@@ -160,7 +198,6 @@ export default function EntrenamientoNadador(){
       const startDate=new Date(`${form.fecha}T${form.horaInicio}:00`);
       const endDate=new Date(`${form.fecha}T${form.horaFin}:00`);
 
-      // Prepara bloques compactos
       const bloquesClean = form.tipo==="agua" ? bloquesConCalculados.map(b=>({
         estilo:b.estilo,
         series:Number(b.series||0),
@@ -180,18 +217,20 @@ export default function EntrenamientoNadador(){
         duracionMin,
         tipo:form.tipo,
         lugar:form.lugar,
-        // Nuevo modelo:
         bloques: form.tipo==="agua" ? bloquesClean : [],
         distanciaTotal: form.tipo==="agua" ? distanciaTotal : 0,
         ritmo100: form.tipo==="agua" ? ritmo100 : "",
-        // legado (se dejan a 0/"" para compatibilidad)
+        // legado
         series:0, repeticiones:0, estilo:"",
         rpe:Number(form.rpe||0),
         frecuenciaCardiaca:Number(form.frecuenciaCardiaca||0)||null,
         fatiga:form.fatiga,
         notas:form.notas?.trim()||"",
         createdAt:serverTimestamp(),
+        // 👇 NUEVO: visibilidad para los coaches (dueños de equipos del atleta)
+        ownerIds: coachIds,
       };
+
       const col=collection(db,"usuarios",uid,"entrenamientos");
       await addDoc(col,payload);
 
@@ -204,7 +243,7 @@ export default function EntrenamientoNadador(){
     }finally{setGuardando(false)}
   };
 
-  // ====== KPIs y series (compatibilidad con sesiones viejas) ======
+  // ====== KPIs y series ======
   const kpis=useMemo(()=>{
     const agua=historial.filter(h=>h.tipo==="agua");
     const distOf = (h)=> typeof h.distanciaTotal==="number" ? h.distanciaTotal :
@@ -481,14 +520,9 @@ export default function EntrenamientoNadador(){
               <>
                 <div
                   className="en-timeline"
-                  style={
-                    verMas
-                      ? {maxHeight: isNarrow? '44vh':'40vh', overflowY:'auto', paddingRight:4, overscrollBehavior:'contain'}
-                      : {maxHeight:'unset', overflow:'visible', paddingRight:0}
-                  }
+                  style={verMas ? {maxHeight: isNarrow? '44vh':'40vh', overflowY:'auto', paddingRight:4, overscrollBehavior:'contain'} : {maxHeight:'unset', overflow:'visible', paddingRight:0}}
                 >
-                  {listaHistorial.map((s)=>{
-
+                  {(verMas ? historial : historial.slice(idx, idx+1)).map((s)=>{
                     const distOf = typeof s.distanciaTotal==="number" ? s.distanciaTotal :
                       (Array.isArray(s.bloques)? s.bloques.reduce((a,b)=>a+((b.series||0)*(b.metrosSerie||0)),0): 0);
 
@@ -507,7 +541,6 @@ export default function EntrenamientoNadador(){
                           <div className="en-tl-kv"><span>RPE</span><strong>{s.rpe?`${s.rpe}/10`:"—"}</strong></div>
                         </div>
 
-                        {/* Si hay bloques, listarlos */}
                         {Array.isArray(s.bloques)&&s.bloques.length>0&&(
                           <div className="en-tl-nota" style={{marginTop:8}}>
                             <div style={{fontWeight:700,marginBottom:6}}>Bloques:</div>
