@@ -259,7 +259,7 @@ export default function EntrenamientoNadador(){
       <header className="en-header">
         <div className="en-hero">
           <h1>Registro de entrenamiento</h1>
-          <p>Registra tu sesión y revisa el resumen a la derecha</p>
+          <p>Registra tu sesión y revisa el resumen de los dias anteriores!</p>
         </div>
         <div className="en-water"></div>
         <div className="en-bubbles"></div>

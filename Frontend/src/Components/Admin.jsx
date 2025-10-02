@@ -3,7 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import "@sweetalert2/themes/borderless/borderless.css";
-import logo from "../ImagenesP/ImagenesLogin/ADMINLOGO.png";
+import logo from "/image.png";
 import "./DOCSS/Admin.css";
 
 const api = axios.create({
@@ -134,8 +134,8 @@ export default function Admin() {
         <div className="admin-header-left">
           <img src={logo} alt="Logo" className="admin-logo" />
           <div>
-            <h1 className="admin-title">Panel de Administración</h1>
-            <p className="admin-subtitle">Gestión de usuarios</p>
+            <h1 className="admin-title">GESTIÓN DE USUARIOS</h1>
+            <p className="admin-subtitle">Modifica y elimina los usuarios!</p>
           </div>
         </div>
       </header>

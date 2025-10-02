@@ -31,7 +31,7 @@ const Navbar = () => {
       { label: "Equipos", to: "/Admin/equipos" },
     ],
     USEREN: [
-      { label: "Opción 1 Entrenador", to: "/entrenador/opcion-1" },
+      { label: "Equipos", to: "/InicioEntrenador" },
       { label: "Opción 2 Entrenador", to: "/entrenador/opcion-2" },
     ],
     USER: [
