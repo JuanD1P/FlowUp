@@ -51,14 +51,26 @@ export default function EntrenamientoNadador(){
   const [bloques,setBloques]=useState([{ estilo:"Libre", series:1, metrosSerie:100, minutos:"" }]);
 
   useEffect(()=>{
-    let off=onAuthStateChanged(auth,(u)=>{
+    let off = onAuthStateChanged(auth,(u)=>{
       if(u?.uid){
         setUid(u.uid);
+
+        // Historial del atleta
         const col=collection(db,"usuarios",u.uid,"entrenamientos");
         const qy=query(col,orderBy("startMs","desc"));
         const offSnap=onSnapshot(qy,(snap)=>{setHistorial(snap.docs.map((d)=>({id:d.id,...d.data()})))});
-        off=()=>offSnap();
-      }else{setUid("");setHistorial([])}
+
+        // Equipos donde es miembro → obtener ownerId (coach)
+        const qEq = query(collection(db,"equipos"), where("miembros","array-contains", u.uid));
+        const offTeams = onSnapshot(qEq, (snap) => {
+          const owners = Array.from(new Set(snap.docs.map(d => d.data()?.ownerId).filter(Boolean)));
+          setCoachIds(owners);
+        });
+
+        off = ()=>{ offSnap(); offTeams(); };
+      }else{
+        setUid(""); setHistorial([]); setCoachIds([]);
+      }
     });
     const onKey=(e)=>{if(e.key==="Escape"){setShowPulso(false)}};
     const onResize=()=>setVw(window.innerWidth);
@@ -66,6 +78,28 @@ export default function EntrenamientoNadador(){
     window.addEventListener("resize",onResize);
     return()=>{off&&off();window.removeEventListener("keydown",onKey);window.removeEventListener("resize",onResize)}
   },[]);
+
+  // 👇 NUEVO: backfill para entrenos sin ownerIds (últimos N)
+  useEffect(() => {
+    if (!uid || coachIds.length === 0) return;
+    (async () => {
+      try {
+        const col = collection(db, "usuarios", uid, "entrenamientos");
+        const qy = query(col, orderBy("startMs","desc"), limit(BACKFILL_LIMIT));
+        const snap = await getDocs(qy);
+        const ops = [];
+        snap.forEach(d => {
+          const data = d.data();
+          if (!Array.isArray(data.ownerIds) || data.ownerIds.length === 0) {
+            ops.push(updateDoc(d.ref, { ownerIds: coachIds }));
+          }
+        });
+        if (ops.length) await Promise.all(ops);
+      } catch (e) {
+        console.warn("Backfill ownerIds falló:", e);
+      }
+    })();
+  }, [uid, coachIds]);
 
   useEffect(()=>{ setIdx(0) },[historial.length]);
 
@@ -87,6 +121,11 @@ export default function EntrenamientoNadador(){
     return pace100Str(t, distanciaTotal);
   },[form.tipo,duracionMin,distanciaTotal]);
 
+  const bloquesConCalculados = useMemo(()=>(bloques.map(b=>{
+    const metros = (Number(b.series||0)*Number(b.metrosSerie||0))||0;
+    const min = Number(b.minutos||0);
+    return {...b, metrosTotales:metros, ritmo100: pace100Str(min, metros)};
+  })),[bloques]);
   const bloquesConCalculados = useMemo(()=>(bloques.map(b=>{
     const metros = (Number(b.series||0)*Number(b.metrosSerie||0))||0;
     const min = Number(b.minutos||0);
@@ -141,7 +180,10 @@ export default function EntrenamientoNadador(){
         fatiga:form.fatiga,
         notas:form.notas?.trim()||"",
         createdAt:serverTimestamp(),
+        // 👇 NUEVO: visibilidad para los coaches (dueños de equipos del atleta)
+        ownerIds: coachIds,
       };
+
       const col=collection(db,"usuarios",uid,"entrenamientos");
       await addDoc(col,payload);
       setForm({fecha:isoFecha(new Date()),horaInicio:isoHora(new Date()),horaFin:isoHora(new Date(new Date().getTime()+60*60*1000)),tipo:"agua",lugar:"Piscina 25 m",rpe:5,frecuenciaCardiaca:"",fatiga:"Media",notas:""});
