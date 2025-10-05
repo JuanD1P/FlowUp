@@ -32,7 +32,6 @@ const Navbar = () => {
     ],
     USEREN: [
       { label: "Equipos", to: "/InicioEntrenador" },
-      { label: "Opción 2 Entrenador", to: "/entrenador/opcion-2" },
     ],
     USER: [
       { label: "Inicio", to: "/Inicio" },
