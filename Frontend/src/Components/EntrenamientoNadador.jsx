@@ -894,7 +894,7 @@ export default function EntrenamientoNadador() {
                 <button className="en-btn" type="button" onClick={() => setVerMas((v) => !v)} disabled={!historial.length}>
                   {verMas ? "Ver 1" : "Ver más"}
                 </button>
-                <button className="en-btn" type="button" onClick={exportarCSV} disabled={!historial.length}>Exportar CSV</button>
+
                 <button className="en-btn en-primary" type="button" onClick={exportarPDF} disabled={!historial.length}>Exportar PDF</button>
               </div>
             </div>
