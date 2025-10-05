@@ -66,3 +66,14 @@ userRouter.get("/equipos/:Id/miembros", async (req, res) => {
     res.status(500).json({ error: "No se pudo obtener los miembros del equipo" });
   }
 });
+
+//obtener todos los equipos
+userRouter.get("/equipos", async (req, res) => {
+  try {
+    const snap = await firestoreAdmin.collection("equipos").get();  
+    const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: "No se pudo obtener los equipos" });
+  }
+});
