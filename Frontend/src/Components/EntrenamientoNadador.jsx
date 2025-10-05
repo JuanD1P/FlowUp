@@ -2,20 +2,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebase/client";
-import {
-  collection,
-  collectionGroup,
-  addDoc,
-  serverTimestamp,
-  onSnapshot,
-  query,
-  orderBy,
-  where,
-  getDocs,
-  getDoc,
-  updateDoc,
-  limit,
-} from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
+import { jsPDF } from "jspdf";
 import "./DOCSS/EntrenamientoNadador.css";
 
 /* ================= Constantes ================= */
@@ -181,99 +169,30 @@ export default function EntrenamientoNadador() {
   // Bloques de natación
   const [bloques, setBloques] = useState([{ estilo: "Libre", series: 1, metrosSerie: 100, minutos: "" }]);
 
-  /* ----- Suscripciones Auth + datos + equipos ----- */
-  useEffect(() => {
-    const unsubs = { auth: null, hist: null, teams: null };
-
-    unsubs.auth = onAuthStateChanged(auth, (u) => {
-      // corta anteriores
-      if (unsubs.hist) {
-        unsubs.hist();
-        unsubs.hist = null;
-      }
-      if (unsubs.teams) {
-        unsubs.teams();
-        unsubs.teams = null;
-      }
-
-      if (u?.uid) {
+  useEffect(()=>{
+    let off=onAuthStateChanged(auth,(u)=>{
+      if(u?.uid){
         setUid(u.uid);
-
-        // Historial
-        const col = collection(db, "usuarios", u.uid, "entrenamientos");
-        const qy = query(col, orderBy("startMs", "desc"));
-        unsubs.hist = onSnapshot(qy, (snap) => setHistorial(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
-
-        // Dueños de equipos donde yo estoy como "nadador"
-        const qEq = query(collectionGroup(db, "nadadores"), where("uid", "==", u.uid));
-        unsubs.teams = onSnapshot(qEq, async (snap) => {
-          try {
-            const ownerPromises = snap.docs.map(async (nd) => {
-              const equipoRef = nd.ref.parent.parent;
-              if (!equipoRef) return null;
-              const eqSnap = await getDoc(equipoRef);
-              return eqSnap.exists() ? eqSnap.data()?.ownerId : null;
-            });
-            const owners = (await Promise.all(ownerPromises)).filter(Boolean);
-            setCoachIds(Array.from(new Set(owners)));
-          } catch {
-            setCoachIds([]);
-          }
-        });
-      } else {
-        setUid("");
-        setHistorial([]);
-        setCoachIds([]);
-      }
+        const col=collection(db,"usuarios",u.uid,"entrenamientos");
+        const qy=query(col,orderBy("startMs","desc"));
+        const offSnap=onSnapshot(qy,(snap)=>{setHistorial(snap.docs.map((d)=>({id:d.id,...d.data()})))});
+        off=()=>offSnap();
+      }else{setUid("");setHistorial([])}
     });
+    const onKey=(e)=>{if(e.key==="Escape"){setShowPulso(false)}};
+    const onResize=()=>setVw(window.innerWidth);
+    window.addEventListener("keydown",onKey);
+    window.addEventListener("resize",onResize);
+    return()=>{off&&off();window.removeEventListener("keydown",onKey);window.removeEventListener("resize",onResize)}
+  },[]);
 
-    const onKey = (e) => e.key === "Escape" && setShowPulso(false);
-    const onResize = () => setVw(window.innerWidth);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("resize", onResize);
+  useEffect(()=>{ setIdx(0) },[historial.length]);
 
-    return () => {
-      if (unsubs.hist) unsubs.hist();
-      if (unsubs.teams) unsubs.teams();
-      if (unsubs.auth) unsubs.auth();
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", onResize);
-    };
-  }, []);
-
-  /* ----- Backfill ownerIds para últimas sesiones ----- */
-  useEffect(() => {
-    if (!uid) return;
-    const owners = Array.from(new Set([uid, ...coachIds]));
-    if (owners.length === 0) return;
-
-    (async () => {
-      try {
-        const col = collection(db, "usuarios", uid, "entrenamientos");
-        const qy = query(col, orderBy("startMs", "desc"), limit(BACKFILL_LIMIT));
-        const snap = await getDocs(qy);
-        const ops = [];
-        snap.forEach((d) => {
-          const data = d.data();
-          if (!Array.isArray(data.ownerIds) || data.ownerIds.length === 0) {
-            ops.push(updateDoc(d.ref, { ownerIds: owners }));
-          }
-        });
-        if (ops.length) await Promise.all(ops);
-      } catch (e) {
-        console.warn("Backfill ownerIds falló:", e);
-      }
-    })();
-  }, [uid, coachIds]);
-
-  useEffect(() => setIdx(0), [historial.length]);
-
-  /* ----- Derivados ----- */
-  const duracionMin = useMemo(() => {
-    if (!form.horaInicio || !form.horaFin) return "";
-    const diff = toMinutes(form.horaFin) - toMinutes(form.horaInicio);
-    return diff > 0 ? diff : "";
-  }, [form.horaInicio, form.horaFin]);
+  const duracionMin=useMemo(()=>{
+    if(!form.horaInicio||!form.horaFin)return"";
+    const diff=toMinutes(form.horaFin)-toMinutes(form.horaInicio);
+    return diff>0?diff:"";
+  },[form.horaInicio,form.horaFin]);
 
   const distanciaTotal = useMemo(() => {
     if (form.tipo !== "agua") return 0;
@@ -352,39 +271,40 @@ export default function EntrenamientoNadador() {
       const L = 48, R = 48, TOP = 60, BOT = 64;
       let y = TOP;
 
-      // Título
-      doc.setFont("helvetica", "bold").setFontSize(22).setTextColor("#10223e");
-      doc.text("Reporte de Entrenamientos — FlowUp", L, y);
-      y += 22;
-      doc.setFont("helvetica", "normal").setFontSize(11).setTextColor("#5b6b8a");
-      doc.text(new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }), L, y);
-      doc.setTextColor("#10223e");
+    // Título
+    doc.setFont("helvetica","bold").setFontSize(22).setTextColor("#10223e");
+    doc.text("Reporte de Entrenamientos — FlowUp", L, y);
+    y += 22;
+    doc.setFont("helvetica","normal").setFontSize(11).setTextColor("#5b6b8a");
+    doc.text(new Date().toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"}), L, y);
+    doc.setTextColor("#10223e");
 
-      // KPIs
-      y += 20;
-      const kH = 56, kGap = 10;
-      const kW = (W - L - R - kGap * 3) / 4;
-      const KPIS = [
-        ["Metros (7 días)", `${kpis.dist7d} m`],
-        ["Tendencia semana", `${kpis.distTrend >= 0 ? "+" : ""}${Math.abs(kpis.distTrend).toFixed(0)}%`],
-        ["Sesiones (30 días)", `${kpis.ses30d}`],
-        ["RPE prom (10)", `${kpis.rpeProm.toFixed(1)}`],
-      ];
-      KPIS.forEach(([lbl, val], i) => {
-        const x = L + i * (kW + kGap);
-        doc.setDrawColor(226, 233, 246).setFillColor(255, 255, 255);
-        doc.roundedRect(x, y, kW, kH, 10, 10, "FD");
-        doc.setFontSize(10).setTextColor("#5b6b8a").text(lbl, x + 12, y + 18);
-        doc.setFont("helvetica", "bold").setFontSize(16).setTextColor("#10223e").text(val, x + 12, y + 38);
-        doc.setFont("helvetica", "normal");
-      });
-      y += kH + 26;
+    // KPIs
+    y += 20;
+    const kH = 56;
+    const kGap = 10;
+    const kW = (W - L - R - kGap*3) / 4;
+    const KPIS = [
+      ["Metros (7 días)", `${kpis.dist7d} m`],
+      ["Tendencia semana", `${kpis.distTrend>=0?"+":""}${Math.abs(kpis.distTrend).toFixed(0)}%`],
+      ["Sesiones (30 días)", `${kpis.ses30d}`],
+      ["RPE prom (10)", `${kpis.rpeProm.toFixed(1)}`],
+    ];
+    KPIS.forEach(([lbl,val],i)=>{
+      const x = L + i*(kW + kGap);
+      doc.setDrawColor(226,233,246).setFillColor(255,255,255);
+      doc.roundedRect(x, y, kW, kH, 10, 10, "FD");
+      doc.setFontSize(10).setTextColor("#5b6b8a").text(lbl, x+12, y+18);
+      doc.setFont("helvetica","bold").setFontSize(16).setTextColor("#10223e").text(val, x+12, y+38);
+      doc.setFont("helvetica","normal");
+    });
+    y += kH + 26;
 
-      // Encabezado de tabla
-      const cols = ["Fecha", "Horario", "Lugar", "Durac.", "Metros", "Ritmo", "RPE"];
-      const widths = [120, 86, 150, 50, 58, 70, 34];
-      const lineH = 15;
-      const rowPadY = 8;
+    // Encabezado de tabla
+    const cols = ["Fecha","Horario","Lugar","Durac.","Metros","Ritmo","RPE"];
+    const widths = [120,86,150,50,58,70,34]; // total ≈ ancho útil
+    const lineH = 15;             // altura de línea texto
+    const rowPadY = 8;            // padding vertical de fila
 
       const drawHeader = () => {
         doc.setFontSize(10).setTextColor("#5b6b8a");
@@ -400,11 +320,11 @@ export default function EntrenamientoNadador() {
       };
       drawHeader();
 
-      // Cuerpo
-      for (const s of historial) {
-        const fechaTxt = s.fechaLegible ? s.fechaLegible : s.fecha ? fechaCortaES(s.fecha) : "";
-        const distTxt = s.tipo === "agua" ? `${distOf(s) || 0} m` : "—";
-        const ritmoTxt = s.ritmo100 ? s.ritmo100.replace(" /100m", "") : "—";
+    // Cuerpo
+    for(const s of historial){
+      const fechaTxt = s.fechaLegible ? s.fechaLegible : (s.fecha ? fechaCortaES(s.fecha) : "");
+      const distTxt = s.tipo==="agua" ? `${distOf(s)||0} m` : "—";
+      const ritmoTxt = s.ritmo100 ? s.ritmo100.replace(" /100m","") : "—"; // acorta etiqueta
 
         const row = [
           fechaTxt,
@@ -416,187 +336,75 @@ export default function EntrenamientoNadador() {
           s.rpe ? `${s.rpe}` : "—",
         ];
 
-        const cellLines = [];
-        row.forEach((txt, i) => {
-          const maxW = widths[i] - 6;
-          const lines = doc.splitTextToSize(String(txt), maxW);
-          cellLines.push(lines);
-        });
-        const maxLines = Math.max(...cellLines.map((ls) => ls.length));
-        let rowH = maxLines * lineH + rowPadY;
+      // Calcular alto de fila en función del contenido (ajustando por columna)
+      const cellLines = [];
+      row.forEach((txt,i)=>{
+        const maxW = widths[i]-6;
+        const lines = doc.splitTextToSize(String(txt), maxW);
+        cellLines.push(lines);
+      });
+      const maxLines = Math.max(...cellLines.map(ls=>ls.length));
+      let rowH = maxLines*lineH + rowPadY;
 
-        let extraText = "";
-        if (Array.isArray(s.bloques) && s.bloques.length) {
-          const t = s.bloques
-            .map((b) => {
-              const tot = b.metrosTotales ?? b.series * b.metrosSerie;
-              const m = b.minutos ? ` · ${b.minutos} min` : "";
-              const r = b.ritmo100 ? ` · ${b.ritmo100}` : "";
-              return `• ${b.estilo}: ${b.series}×${b.metrosSerie} m = ${tot} m${m}${r}`;
-            })
-            .join("\n");
-          extraText += t;
-        }
-        if (s.notas) extraText += (extraText ? "\n" : "") + `Notas: ${s.notas}`;
+      // Bloques y notas forman un bloque debajo
+      let extraText = "";
+      if (Array.isArray(s.bloques) && s.bloques.length){
+        const t = s.bloques.map(b=>{
+          const tot = b.metrosTotales ?? (b.series*b.metrosSerie);
+          const m = b.minutos ? ` · ${b.minutos} min` : "";
+          const r = b.ritmo100 ? ` · ${b.ritmo100}` : "";
+          return `• ${b.estilo}: ${b.series}×${b.metrosSerie} m = ${tot} m${m}${r}`;
+        }).join("\n");
+        extraText += t;
+      }
+      if (s.notas){
+        extraText += (extraText ? "\n" : "") + `Notas: ${s.notas}`;
+      }
+      const extraLines = extraText ? doc.splitTextToSize(extraText, W - L - R) : [];
+      const extraH = extraLines.length ? extraLines.length*13 + 10 : 0;
 
-        const extraLines = extraText ? doc.splitTextToSize(extraText, W - L - R) : [];
-        const extraH = extraLines.length ? extraLines.length * 13 + 10 : 0;
-
-        if (y + rowH + (extraH ? extraH + 8 : 0) > H - BOT) {
-          doc.addPage();
-          y = TOP;
-          drawHeader();
-        }
-
-        let x = L;
-        doc.setFontSize(11);
-        cellLines.forEach((lines, i) => {
-          doc.text(lines, x, y + 12);
-          x += widths[i];
-        });
-        y += rowH;
-
-        if (extraLines.length) {
-          doc.setDrawColor(219, 231, 255).setFillColor(247, 251, 255);
-          doc.roundedRect(L, y, W - L - R, extraH, 6, 6, "FD");
-          doc.setFontSize(10).setTextColor("#0f1e3a");
-          doc.text(extraLines, L + 8, y + 14);
-          doc.setTextColor("#10223e");
-          y += extraH;
-        }
-
-        doc.setDrawColor(233, 238, 250);
-        doc.line(L, y + 4, W - R, y + 4);
-        y += 10;
+      // Salto de página si no cabe todo
+      if (y + rowH + (extraH?extraH+8:0) > H - BOT){
+        doc.addPage();
+        y = TOP;
+        drawHeader();
       }
 
-      doc.save("entrenamientos.pdf");
-    } catch (e) {
-      setToast("Falta instalar jspdf: npm i jspdf");
-      setTimeout(() => setToast(""), 2200);
-      console.error(e);
-    }
-  };
-
-  // KPIs
-  const kpis = useMemo(() => {
-    const agua = historial.filter((h) => h.tipo === "agua");
-    const distOf = (h) =>
-      typeof h.distanciaTotal === "number"
-        ? h.distanciaTotal
-        : Array.isArray(h.bloques)
-        ? h.bloques.reduce((a, b) => a + Number(b.series || 0) * Number(b.metrosSerie || 0), 0)
-        : 0;
-
-    const winA = agua.filter((h) => between(h.startMs || 0, 7)).reduce((a, b) => a + distOf(b), 0);
-    const prevA = agua
-      .filter((h) => between(h.startMs || 0, 14) && !between(h.startMs || 0, 7))
-      .reduce((a, b) => a + distOf(b), 0);
-    const ses30 = historial.filter((h) => between(h.startMs || 0, 30)).length;
-    const prevSes = historial.filter((h) => between(h.startMs || 0, 60) && !between(h.startMs || 0, 30)).length;
-    const rpeProm =
-      historial.slice(0, 10).reduce((a, b) => a + (b.rpe || 0), 0) / Math.max(1, Math.min(10, historial.length));
-    const distSeries = padSeries(agua.map((h) => distOf(h) || 0), 8);
-    const durSeries = padSeries(historial.map((h) => h.duracionMin || 0), 8);
-    const maxD = Math.max(1, ...distSeries);
-    const maxT = Math.max(1, ...durSeries);
-    return {
-      dist7d: winA,
-      distTrend: pct(winA, prevA),
-      ses30d: ses30,
-      sesTrend: pct(ses30, prevSes),
-      rpeProm: isFinite(rpeProm) ? rpeProm : 0,
-      distSeries,
-      durSeries,
-      maxD,
-      maxT,
-    };
-  }, [historial]);
-
-  // (opcional) agrupación semanal — queda disponible si luego quieres mostrarla
-  const grupoSemanal = useMemo(() => {
-    const byWeek = new Map();
-    historial.forEach((h) => {
-      const d = new Date(h.startMs || 0);
-      const jan1 = new Date(d.getFullYear(), 0, 1);
-      const days = Math.floor((d - jan1) / 86400000) + jan1.getDay();
-      const w = Math.floor(days / 7);
-      const key = `${d.getFullYear()}-W${String(w).padStart(2, "0")}`;
-      if (!byWeek.has(key)) byWeek.set(key, []);
-      byWeek.get(key).push(h);
-    });
-    return Array.from(byWeek.entries()).slice(0, 5);
-  }, [historial]);
-
-  const rpeHue = 140 - Math.min(10, Math.max(1, Number(form.rpe || 5))) * 10;
-
-  const startTimer = (secs) => {
-    clearInterval(tRef.current);
-    setTimer(secs);
-    tRef.current = setInterval(() => {
-      setTimer((s) => {
-        if (s <= 1) clearInterval(tRef.current);
-        return s > 1 ? s - 1 : 0;
+      // Dibujo de fila
+      let x=L;
+      doc.setFontSize(11);
+      cellLines.forEach((lines,i)=>{
+        doc.text(lines, x, y + 12);
+        x += widths[i];
       });
-    }, 1000);
-  };
+      y += rowH;
 
-  const listaHistorial = useMemo(() => {
-    if (!historial.length) return [];
-    return verMas ? historial : historial.slice(idx, idx + 1);
-  }, [historial, verMas, idx]);
+      // Extra (bloques/notas) en cajita
+      if (extraLines.length){
+        doc.setDrawColor(219,231,255).setFillColor(247,251,255);
+        doc.roundedRect(L, y, W-L-R, extraH, 6, 6, "FD");
+        doc.setFontSize(10).setTextColor("#0f1e3a");
+        doc.text(extraLines, L+8, y+14);
+        doc.setTextColor("#10223e");
+        y += extraH;
+      }
 
-  const canPrev = !verMas && idx > 0;
-  const canNext = !verMas && idx < Math.max(0, historial.length - 1);
-  const goPrev = () => canPrev && setIdx((i) => Math.max(0, i - 1));
-  const goNext = () => canNext && setIdx((i) => Math.min(historial.length - 1, i + 1));
+      // Separador
+      doc.setDrawColor(233,238,250);
+      doc.line(L, y+4, W-R, y+4);
+      y += 10;
+    }
 
-  /* ----- SVG charts (gradientes) ----- */
-  const distChart = (values, max) => {
-    const n = Math.max(1, values.length || 8);
-    const safeMax = Math.max(1, max || 1);
-    return (
-      <svg className="en-svg" viewBox="0 0 320 160" preserveAspectRatio="none" aria-label="Distancia últimas 8 sesiones">
-        {values.map((v, i) => {
-          const x = i * (320 / n);
-          const bw = 320 / n - 6;
-          const h = Math.max(8, (v / safeMax) * 140);
-          return (
-            <g key={i} transform={`translate(${x + 3},${160 - h - 10})`}>
-              <rect width={bw} height={h} rx="6" fill="url(#grad1)" />
-              <text x={bw / 2} y={h + 12} textAnchor="middle" className="en-bar-lbl">
-                {v ? (v >= 1000 ? (v / 1000).toFixed(1) + "k" : v) : ""}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    );
-  };
-  const durChart = (values, max) => {
-    const n = Math.max(1, values.length || 8);
-    const safeMax = Math.max(1, max || 1);
-    return (
-      <svg className="en-svg" viewBox="0 0 320 160" preserveAspectRatio="none" aria-label="Duración últimas 8 sesiones">
-        {values.map((v, i) => {
-          const x = i * (320 / n);
-          const bw = 320 / n - 6;
-          const h = Math.max(8, (v / safeMax) * 140);
-          return (
-            <g key={i} transform={`translate(${x + 3},${160 - h - 10})`}>
-              <rect width={bw} height={h} rx="6" fill="url(#grad2)" />
-              <text x={bw / 2} y={h + 12} textAnchor="middle" className="en-bar-lbl">
-                {v ? `${v}m` : ""}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    );
-  };
+    doc.save("entrenamientos.pdf");
+  }catch(e){
+    setToast("Falta instalar jspdf: npm i jspdf");
+    setTimeout(()=>setToast(""),2200);
+    console.error(e);
+  }
+};
 
-  /* ================= Render ================= */
-  return (
+
+  return(
     <div className="en-wrap">
       {/* Gradientes para los charts SVG */}
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true" focusable="false">
@@ -710,12 +518,14 @@ export default function EntrenamientoNadador() {
 
                   <label className="en-field en-with-unit">
                     <span>Metros por serie</span>
-                    <input type="number" inputMode="numeric" value={b.metrosSerie} onChange={(e) => updateBloque(i, "metrosSerie", Number(e.target.value))} />
+                    <input type="number" inputMode="numeric" value={b.metrosSerie} onChange={e=>updateBloque(i,"metrosSerie",Number(e.target.value))}/>
+
                   </label>
 
                   <label className="en-field en-with-unit">
                     <span>Minutos (opcional)</span>
-                    <input type="number" inputMode="numeric" placeholder="p.ej. 10" value={b.minutos} onChange={(e) => updateBloque(i, "minutos", e.target.value)} />
+                    <input type="number" inputMode="numeric" placeholder="p.ej. 10" value={b.minutos} onChange={e=>updateBloque(i,"minutos",e.target.value)}/>
+
                   </label>
 
                   <div className="en-field">
