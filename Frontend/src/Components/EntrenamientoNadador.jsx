@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebase/client";
 import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
+import { jsPDF } from "jspdf";
 import "./DOCSS/EntrenamientoNadador.css";
 
 const TIPOS=[{value:"agua",label:"Natación en agua"},{value:"tierra",label:"Fuerza/estabilidad"},{value:"otro",label:"Otro"}];
@@ -15,37 +16,8 @@ function fechaLarga(d){const x=new Date(d);return x.toLocaleDateString("es-ES",{
 function toMinutes(hhmm){const [h,m]=hhmm.split(":").map(Number);return h*60+m}
 function between(ts,days){const now=Date.now();return ts>=now-days*86400000&&ts<=now+1}
 function pct(a,b){if(!b)return 0;return((a-b)/b)*100}
-function pace100Str(mins, meters){
-  if(!mins || !meters) return "";
-  const per100 = mins / (meters/100);
-  const mm = Math.floor(per100);
-  const ss = Math.round((per100-mm)*60);
-  return `${mm}:${String(ss).padStart(2,"0")} /100m`;
-}
-function toCSV(rows){
-  const head=[
-    "fecha","horaInicio","horaFin","tipo","lugar","duracionMin",
-    "distanciaTotal","ritmo100","rpe","frecuenciaCardiaca","fatiga","notas","bloques"
-  ].join(",");
-  const body=rows.map(r=>{
-    const dist = r.distanciaTotal ?? (Array.isArray(r.bloques)? r.bloques.reduce((a,b)=>a+((b.series||0)*(b.metrosSerie||0)),0): 0);
-    const bloquesCSV = Array.isArray(r.bloques) ? JSON.stringify(r.bloques.map(b=>({
-      estilo:b.estilo, series:b.series, metrosSerie:b.metrosSerie, minutos:b.minutos||null
-    }))) : "";
-    return [
-      r.fecha||"", r.horaInicio||"", r.horaFin||"", r.tipo||"", r.lugar||"",
-      r.duracionMin||"", dist||"", r.ritmo100||"", r.rpe||"",
-      r.frecuenciaCardiaca??"", r.fatiga||"", String(r.notas||"").replace(/[\r\n,]+/g," "),
-      `"${bloquesCSV.replace(/"/g,'""')}"`
-    ].join(",");
-  }).join("\n");
-  return head+"\n"+body;
-}
+function pace100Str(mins, meters){if(!mins || !meters) return "";const per100 = mins / (meters/100);const mm = Math.floor(per100);const ss = Math.round((per100-mm)*60);return `${mm}:${String(ss).padStart(2,"0")} /100m`;}
 function padSeries(arr,n){const a=arr.slice(-n);const pad=Math.max(0,n-a.length);return Array(pad).fill(0).concat(a)}
-const PRISTINE={
-  fecha:"",horaInicio:"",horaFin:"",tipo:"",lugar:"",
-  rpe:5,frecuenciaCardiaca:"",fatiga:"",notas:""
-};
 
 export default function EntrenamientoNadador(){
   const now=new Date();
@@ -60,12 +32,10 @@ export default function EntrenamientoNadador(){
   const [verMas,setVerMas]=useState(false);
   const [idx,setIdx]=useState(0);
   const tRef=useRef(null);
-
   const [vw,setVw]=useState(()=>typeof window!=="undefined"?window.innerWidth:1200);
   const isNarrow=vw<860;
   const isTiny=vw<520;
 
-  // === Form principal (sin campos de estilo individuales) ===
   const [form,setForm]=useState({
     fecha:isoFecha(now),
     horaInicio:isoHora(now),
@@ -78,12 +48,8 @@ export default function EntrenamientoNadador(){
     notas:"",
   });
 
-  // === Bloques por estilo ===
-  const [bloques,setBloques]=useState([
-    { estilo:"Libre", series:1, metrosSerie:100, minutos:"" }
-  ]);
+  const [bloques,setBloques]=useState([{ estilo:"Libre", series:1, metrosSerie:100, minutos:"" }]);
 
-  // ====== Auth + historial ======
   useEffect(()=>{
     let off=onAuthStateChanged(auth,(u)=>{
       if(u?.uid){
@@ -103,7 +69,6 @@ export default function EntrenamientoNadador(){
 
   useEffect(()=>{ setIdx(0) },[historial.length]);
 
-  // ====== Derivados ======
   const duracionMin=useMemo(()=>{
     if(!form.horaInicio||!form.horaFin)return"";
     const diff=toMinutes(form.horaFin)-toMinutes(form.horaInicio);
@@ -122,31 +87,19 @@ export default function EntrenamientoNadador(){
     return pace100Str(t, distanciaTotal);
   },[form.tipo,duracionMin,distanciaTotal]);
 
-  // Ritmo por bloque (si ingresan minutos por bloque)
-  const bloquesConCalculados = useMemo(()=>(
-    bloques.map(b=>{
-      const metros = (Number(b.series||0)*Number(b.metrosSerie||0))||0;
-      const min = Number(b.minutos||0);
-      return {...b, metrosTotales:metros, ritmo100: pace100Str(min, metros)};
-    })
-  ),[bloques]);
+  const bloquesConCalculados = useMemo(()=>(bloques.map(b=>{
+    const metros = (Number(b.series||0)*Number(b.metrosSerie||0))||0;
+    const min = Number(b.minutos||0);
+    return {...b, metrosTotales:metros, ritmo100: pace100Str(min, metros)};
+  })),[bloques]);
 
-  // ====== Handlers ======
   const handleChange=(e)=>{const {name,value}=e.target;setForm((p)=>({...p,[name]:value}))};
   const setAhoraInicio=()=>{const n=new Date();setForm((p)=>({...p,horaInicio:isoHora(n)}))};
   const setAhoraFin=()=>{const n=new Date();setForm((p)=>({...p,horaFin:isoHora(n)}))};
 
   const addBloque=()=>setBloques(b=>[...b,{estilo:"Libre",series:1,metrosSerie:100,minutos:""}]);
-  const updateBloque=(i,field,val)=>{
-    setBloques(prev=>{
-      const copy=[...prev];
-      copy[i]={...copy[i],[field]:val};
-      return copy;
-    });
-  };
+  const updateBloque=(i,field,val)=>{setBloques(prev=>{const copy=[...prev];copy[i]={...copy[i],[field]:val};return copy})};
   const removeBloque=(i)=>setBloques(prev=>prev.filter((_,idx)=>idx!==i));
-
-  const exportarCSV=()=>{if(!historial.length)return;const csv=toCSV(historial);const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="entrenamientos.csv";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);setToast("Exportado como CSV");setTimeout(()=>setToast(""),1800)};
 
   const handleSubmit=async(e)=>{
     e.preventDefault();
@@ -160,7 +113,6 @@ export default function EntrenamientoNadador(){
       const startDate=new Date(`${form.fecha}T${form.horaInicio}:00`);
       const endDate=new Date(`${form.fecha}T${form.horaFin}:00`);
 
-      // Prepara bloques compactos
       const bloquesClean = form.tipo==="agua" ? bloquesConCalculados.map(b=>({
         estilo:b.estilo,
         series:Number(b.series||0),
@@ -180,11 +132,9 @@ export default function EntrenamientoNadador(){
         duracionMin,
         tipo:form.tipo,
         lugar:form.lugar,
-        // Nuevo modelo:
         bloques: form.tipo==="agua" ? bloquesClean : [],
         distanciaTotal: form.tipo==="agua" ? distanciaTotal : 0,
         ritmo100: form.tipo==="agua" ? ritmo100 : "",
-        // legado (se dejan a 0/"" para compatibilidad)
         series:0, repeticiones:0, estilo:"",
         rpe:Number(form.rpe||0),
         frecuenciaCardiaca:Number(form.frecuenciaCardiaca||0)||null,
@@ -194,8 +144,7 @@ export default function EntrenamientoNadador(){
       };
       const col=collection(db,"usuarios",uid,"entrenamientos");
       await addDoc(col,payload);
-
-      setForm({...PRISTINE,fecha:isoFecha(new Date()),horaInicio:isoHora(new Date()),horaFin:isoHora(new Date(new Date().getTime()+60*60*1000)),tipo:"agua",lugar:"Piscina 25 m",rpe:5,fatiga:"Media"});
+      setForm({fecha:isoFecha(new Date()),horaInicio:isoHora(new Date()),horaFin:isoHora(new Date(new Date().getTime()+60*60*1000)),tipo:"agua",lugar:"Piscina 25 m",rpe:5,frecuenciaCardiaca:"",fatiga:"Media",notas:""});
       setBloques([{estilo:"Libre",series:1,metrosSerie:100,minutos:""}]);
       setToast("Sesión guardada");
       setTimeout(()=>setToast(""),2200);
@@ -204,12 +153,10 @@ export default function EntrenamientoNadador(){
     }finally{setGuardando(false)}
   };
 
-  // ====== KPIs y series (compatibilidad con sesiones viejas) ======
   const kpis=useMemo(()=>{
     const agua=historial.filter(h=>h.tipo==="agua");
     const distOf = (h)=> typeof h.distanciaTotal==="number" ? h.distanciaTotal :
       (Array.isArray(h.bloques)? h.bloques.reduce((a,b)=>a+((b.series||0)*(b.metrosSerie||0)),0): 0);
-
     const winA=agua.filter(h=>between(h.startMs||0,7)).reduce((a,b)=>a+distOf(b),0);
     const prevA=agua.filter(h=>between(h.startMs||0,14)&&!between(h.startMs||0,7)).reduce((a,b)=>a+distOf(b),0);
     const ses30=historial.filter(h=>between(h.startMs||0,30)).length;
@@ -220,20 +167,6 @@ export default function EntrenamientoNadador(){
     const maxD=Math.max(1,...distSeries);
     const maxT=Math.max(1,...durSeries);
     return{dist7d:winA,distTrend:pct(winA,prevA),ses30d:ses30,sesTrend:pct(ses30,prevSes),rpeProm:isFinite(rpeProm)?rpeProm:0,distSeries,durSeries,maxD,maxT}
-  },[historial]);
-
-  const grupoSemanal=useMemo(()=>{
-    const byWeek=new Map();
-    historial.forEach(h=>{
-      const d=new Date(h.startMs||0);
-      const jan1=new Date(d.getFullYear(),0,1);
-      const days=Math.floor((d-jan1)/86400000)+jan1.getDay();
-      const w=Math.floor(days/7);
-      const key=`${d.getFullYear()}-W${String(w).padStart(2,"0")}`;
-      if(!byWeek.has(key))byWeek.set(key,[]);
-      byWeek.get(key).push(h);
-    });
-    return Array.from(byWeek.entries()).slice(0,5);
   },[historial]);
 
   const rpeHue=140-Math.min(10,Math.max(1,Number(form.rpe||5)))*10;
@@ -254,12 +187,223 @@ export default function EntrenamientoNadador(){
   const goPrev = ()=>{ if(canPrev) setIdx(i=>Math.max(0,i-1)) };
   const goNext = ()=>{ if(canNext) setIdx(i=>Math.min(historial.length-1,i+1)) };
 
+  const distChart = (values,max)=>{
+    const n = Math.max(1, values.length || 8);
+    const safeMax = Math.max(1, max || 1);
+    return (
+      <svg className="en-svg" viewBox="0 0 320 160" preserveAspectRatio="none" aria-label="Distancia últimas 8 sesiones">
+        {values.map((v,i)=>{
+          const x=i*(320/n);
+          const bw=(320/n)-6;
+          const h=Math.max(8, (v/safeMax)*140);
+          return (
+            <g key={i} transform={`translate(${x+3},${160-h-10})`}>
+              <rect width={bw} height={h} rx="6" fill="url(#grad1)"/>
+              <text x={bw/2} y={h+12} textAnchor="middle" className="en-bar-lbl">{v ? (v>=1000 ? (v/1000).toFixed(1)+'k' : v) : ''}</text>
+            </g>
+          )
+        })}
+      </svg>
+    );
+  };
+
+  const durChart = (values,max)=>{
+    const n = Math.max(1, values.length || 8);
+    const safeMax = Math.max(1, max || 1);
+    return (
+      <svg className="en-svg" viewBox="0 0 320 160" preserveAspectRatio="none" aria-label="Duración últimas 8 sesiones">
+        {values.map((v,i)=>{
+          const x=i*(320/n);
+          const bw=(320/n)-6;
+          const h=Math.max(8, (v/safeMax)*140);
+          return (
+            <g key={i} transform={`translate(${x+3},${160-h-10})`}>
+              <rect width={bw} height={h} rx="6" fill="url(#grad2)"/>
+              <text x={bw/2} y={h+12} textAnchor="middle" className="en-bar-lbl">{v ? `${v}m` : ''}</text>
+            </g>
+          )
+        })}
+      </svg>
+    );
+  };
+
+function fechaCortaES(input){
+  const d = input ? new Date(input) : new Date();
+  const fmt = d.toLocaleDateString("es-ES",{day:"2-digit",month:"short",year:"numeric"});
+  return fmt.replaceAll(".", "");
+}
+
+const exportarPDF = async () => {
+  try{
+    const { jsPDF } = await import("jspdf");
+    if(!historial.length){
+      setToast("No hay datos para exportar");
+      setTimeout(()=>setToast(""),1800);
+      return;
+    }
+
+    const distOf = (s)=> typeof s.distanciaTotal==="number" ? s.distanciaTotal :
+      (Array.isArray(s.bloques)? s.bloques.reduce((a,b)=>a+((b.series||0)*(b.metrosSerie||0)),0): 0);
+
+    const doc = new jsPDF({ unit:"pt", format:"a4" });
+    const W = doc.internal.pageSize.getWidth();
+    const H = doc.internal.pageSize.getHeight();
+    const L = 48;
+    const R = 48;
+    const TOP = 60;
+    const BOT = 64;
+
+    let y = TOP;
+
+    // Título
+    doc.setFont("helvetica","bold").setFontSize(22).setTextColor("#10223e");
+    doc.text("Reporte de Entrenamientos — FlowUp", L, y);
+    y += 22;
+    doc.setFont("helvetica","normal").setFontSize(11).setTextColor("#5b6b8a");
+    doc.text(new Date().toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"}), L, y);
+    doc.setTextColor("#10223e");
+
+    // KPIs
+    y += 20;
+    const kH = 56;
+    const kGap = 10;
+    const kW = (W - L - R - kGap*3) / 4;
+    const KPIS = [
+      ["Metros (7 días)", `${kpis.dist7d} m`],
+      ["Tendencia semana", `${kpis.distTrend>=0?"+":""}${Math.abs(kpis.distTrend).toFixed(0)}%`],
+      ["Sesiones (30 días)", `${kpis.ses30d}`],
+      ["RPE prom (10)", `${kpis.rpeProm.toFixed(1)}`],
+    ];
+    KPIS.forEach(([lbl,val],i)=>{
+      const x = L + i*(kW + kGap);
+      doc.setDrawColor(226,233,246).setFillColor(255,255,255);
+      doc.roundedRect(x, y, kW, kH, 10, 10, "FD");
+      doc.setFontSize(10).setTextColor("#5b6b8a").text(lbl, x+12, y+18);
+      doc.setFont("helvetica","bold").setFontSize(16).setTextColor("#10223e").text(val, x+12, y+38);
+      doc.setFont("helvetica","normal");
+    });
+    y += kH + 26;
+
+    // Encabezado de tabla
+    const cols = ["Fecha","Horario","Lugar","Durac.","Metros","Ritmo","RPE"];
+    const widths = [120,86,150,50,58,70,34]; // total ≈ ancho útil
+    const lineH = 15;             // altura de línea texto
+    const rowPadY = 8;            // padding vertical de fila
+
+    const drawHeader = () => {
+      doc.setFontSize(10).setTextColor("#5b6b8a");
+      let x=L;
+      cols.forEach((c,i)=>{ doc.text(c, x, y); x += widths[i]; });
+      doc.setDrawColor(226,233,246);
+      doc.line(L, y+6, W-R, y+6);
+      y += 16;
+      doc.setTextColor("#10223e");
+    };
+    drawHeader();
+
+    // Cuerpo
+    for(const s of historial){
+      const fechaTxt = s.fechaLegible ? s.fechaLegible : (s.fecha ? fechaCortaES(s.fecha) : "");
+      const distTxt = s.tipo==="agua" ? `${distOf(s)||0} m` : "—";
+      const ritmoTxt = s.ritmo100 ? s.ritmo100.replace(" /100m","") : "—"; // acorta etiqueta
+
+      const row = [
+        fechaTxt,
+        `${s.horaInicio}–${s.horaFin}`,
+        s.lugar || "—",
+        s.duracionMin?`${s.duracionMin}m`:"—",
+        distTxt,
+        ritmoTxt,
+        s.rpe ? `${s.rpe}` : "—"
+      ];
+
+      // Calcular alto de fila en función del contenido (ajustando por columna)
+      const cellLines = [];
+      row.forEach((txt,i)=>{
+        const maxW = widths[i]-6;
+        const lines = doc.splitTextToSize(String(txt), maxW);
+        cellLines.push(lines);
+      });
+      const maxLines = Math.max(...cellLines.map(ls=>ls.length));
+      let rowH = maxLines*lineH + rowPadY;
+
+      // Bloques y notas forman un bloque debajo
+      let extraText = "";
+      if (Array.isArray(s.bloques) && s.bloques.length){
+        const t = s.bloques.map(b=>{
+          const tot = b.metrosTotales ?? (b.series*b.metrosSerie);
+          const m = b.minutos ? ` · ${b.minutos} min` : "";
+          const r = b.ritmo100 ? ` · ${b.ritmo100}` : "";
+          return `• ${b.estilo}: ${b.series}×${b.metrosSerie} m = ${tot} m${m}${r}`;
+        }).join("\n");
+        extraText += t;
+      }
+      if (s.notas){
+        extraText += (extraText ? "\n" : "") + `Notas: ${s.notas}`;
+      }
+      const extraLines = extraText ? doc.splitTextToSize(extraText, W - L - R) : [];
+      const extraH = extraLines.length ? extraLines.length*13 + 10 : 0;
+
+      // Salto de página si no cabe todo
+      if (y + rowH + (extraH?extraH+8:0) > H - BOT){
+        doc.addPage();
+        y = TOP;
+        drawHeader();
+      }
+
+      // Dibujo de fila
+      let x=L;
+      doc.setFontSize(11);
+      cellLines.forEach((lines,i)=>{
+        doc.text(lines, x, y + 12);
+        x += widths[i];
+      });
+      y += rowH;
+
+      // Extra (bloques/notas) en cajita
+      if (extraLines.length){
+        doc.setDrawColor(219,231,255).setFillColor(247,251,255);
+        doc.roundedRect(L, y, W-L-R, extraH, 6, 6, "FD");
+        doc.setFontSize(10).setTextColor("#0f1e3a");
+        doc.text(extraLines, L+8, y+14);
+        doc.setTextColor("#10223e");
+        y += extraH;
+      }
+
+      // Separador
+      doc.setDrawColor(233,238,250);
+      doc.line(L, y+4, W-R, y+4);
+      y += 10;
+    }
+
+    doc.save("entrenamientos.pdf");
+  }catch(e){
+    setToast("Falta instalar jspdf: npm i jspdf");
+    setTimeout(()=>setToast(""),2200);
+    console.error(e);
+  }
+};
+
+
   return(
     <div className="en-wrap">
+      <svg width="0" height="0" style={{position:"absolute"}} aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="grad1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1a6dff" stopOpacity="1"/>
+            <stop offset="100%" stopColor="#00d4ff" stopOpacity="1"/>
+          </linearGradient>
+          <linearGradient id="grad2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#84d8ff" stopOpacity="1"/>
+            <stop offset="100%" stopColor="#8bafff" stopOpacity="1"/>
+          </linearGradient>
+        </defs>
+      </svg>
+
       <header className="en-header">
         <div className="en-hero">
           <h1>Registro de entrenamiento</h1>
-          <p>Registra tu sesión y revisa el resumen de los dias anteriores!</p>
+          <p>Registra tu sesión y revisa el resumen de los días anteriores</p>
         </div>
         <div className="en-water"></div>
         <div className="en-bubbles"></div>
@@ -315,9 +459,8 @@ export default function EntrenamientoNadador(){
           {form.tipo==="agua"&&(
             <section className="en-section">
               <h2>Natación</h2>
-
               {bloquesConCalculados.map((b,i)=>(
-                <div key={i} className="en-grid" style={{border:"1px dashed #DDE6FF",padding:12,borderRadius:12,marginBottom:10,background:"rgba(255,255,255,.6)"}}>
+                <div key={i} className="en-block">
                   <label className="en-field">
                     <span>Estilo</span>
                     <select value={b.estilo} onChange={e=>updateBloque(i,"estilo",e.target.value)}>
@@ -331,12 +474,12 @@ export default function EntrenamientoNadador(){
                   <label className="en-field en-with-unit">
                     <span>Metros por serie</span>
                     <input type="number" inputMode="numeric" value={b.metrosSerie} onChange={e=>updateBloque(i,"metrosSerie",Number(e.target.value))}/>
-                    <span className="en-unit">m</span>
+
                   </label>
                   <label className="en-field en-with-unit">
                     <span>Minutos (opcional)</span>
                     <input type="number" inputMode="numeric" placeholder="p.ej. 10" value={b.minutos} onChange={e=>updateBloque(i,"minutos",e.target.value)}/>
-                    <span className="en-unit">min</span>
+
                   </label>
                   <div className="en-field">
                     <span>Bloque</span>
@@ -351,8 +494,7 @@ export default function EntrenamientoNadador(){
                   </div>
                 </div>
               ))}
-
-              <div style={{display:"flex",gap:10}}>
+              <div className="en-block-actions">
                 <button type="button" className="en-btn en-ghost" onClick={addBloque}>+ Añadir estilo</button>
               </div>
               <div className="en-grid">
@@ -360,12 +502,11 @@ export default function EntrenamientoNadador(){
                   <span>Distancia Total</span>
                   <div className="en-static"><strong>{distanciaTotal} m</strong></div>
                 </div>
-
                 <div className="en-field">
                   <span>Ritmo medio</span>
                   <div className="en-static">{ritmo100 ? ritmo100 : "—"}</div>
                 </div>
-              </div>         
+              </div>
             </section>
           )}
 
@@ -407,7 +548,7 @@ export default function EntrenamientoNadador(){
           <div className="en-actions">
             <button className="en-btn en-primary" type="submit" disabled={guardando}>{guardando?"Guardando…":"Guardar sesión"}</button>
             <button className="en-btn en-ghost" type="button" onClick={()=>{
-              setForm({...PRISTINE,fecha:isoFecha(new Date()),horaInicio:isoHora(new Date()),horaFin:isoHora(new Date(new Date().getTime()+60*60*1000)),tipo:"agua",lugar:"Piscina 25 m",rpe:5,fatiga:"Media"});
+              setForm({fecha:isoFecha(new Date()),horaInicio:isoHora(new Date()),horaFin:isoHora(new Date(new Date().getTime()+60*60*1000)),tipo:"agua",lugar:"Piscina 25 m",rpe:5,frecuenciaCardiaca:"",fatiga:"Media",notas:""});
               setBloques([{estilo:"Libre",series:1,metrosSerie:100,minutos:""}]);
             }}>Limpiar</button>
           </div>
@@ -437,25 +578,11 @@ export default function EntrenamientoNadador(){
             <div className="en-charts">
               <div className="en-chart">
                 <div className="en-chart-title">Distancia últimas 8 sesiones</div>
-                <div className="en-bars en-bars-labeled" style={{height:160}}>
-                  {kpis.distSeries.map((v,i)=>(
-                    <div key={i} className="en-bar" style={{height:"100%"}}>
-                      <div className="en-bar-fill" style={{height:`${Math.max(8,Math.round((v/kpis.maxD)*100))}%`}}/>
-                      <div className="en-bar-cap">{v?`${v>=1000?(v/1000).toFixed(1)+'k':v}`:""}</div>
-                    </div>
-                  ))}
-                </div>
+                {distChart(kpis.distSeries,kpis.maxD)}
               </div>
               <div className="en-chart">
                 <div className="en-chart-title">Duración últimas 8 sesiones</div>
-                <div className="en-bars en-bars-labeled" style={{height:160}}>
-                  {kpis.durSeries.map((v,i)=>(
-                    <div key={i} className="en-bar" style={{height:"100%"}}>
-                      <div className="en-bar-fill alt" style={{height:`${Math.max(8,Math.round((v/kpis.maxT)*100))}%`}}/>
-                      <div className="en-bar-cap">{v?`${v}m`:""}</div>
-                    </div>
-                  ))}
-                </div>
+                {durChart(kpis.durSeries,kpis.maxT)}
               </div>
             </div>
           </div>
@@ -471,64 +598,54 @@ export default function EntrenamientoNadador(){
                     <button className="en-btn" type="button" onClick={goNext} disabled={!canNext} style={{padding:"6px 10px"}}>›</button>
                   </div>
                 )}
-                <button className="en-btn" type="button" onClick={exportarCSV} disabled={!historial.length}>Exportar CSV</button>
+                <button className="en-btn" type="button" onClick={()=>setVerMas(v=>!v)} disabled={!historial.length}>{verMas?"Ver 1":"Ver más"}</button>
+                <button className="en-btn en-primary" type="button" onClick={exportarPDF} disabled={!historial.length}>Exportar PDF</button>
               </div>
             </div>
 
             {historial.length===0&&<p className="en-empty">Aún no hay entrenamientos.</p>}
 
             {historial.length>0&&(
-              <>
-                <div
-                  className="en-timeline"
-                  style={
-                    verMas
-                      ? {maxHeight: isNarrow? '44vh':'40vh', overflowY:'auto', paddingRight:4, overscrollBehavior:'contain'}
-                      : {maxHeight:'unset', overflow:'visible', paddingRight:0}
-                  }
-                >
-                  {listaHistorial.map((s)=>{
-
-                    const distOf = typeof s.distanciaTotal==="number" ? s.distanciaTotal :
-                      (Array.isArray(s.bloques)? s.bloques.reduce((a,b)=>a+((b.series||0)*(b.metrosSerie||0)),0): 0);
-
-                    return (
-                      <div key={s.id} className="en-tl-item" style={{padding:10}}>
-                        <div className="en-tl-head">
-                          <div className="en-tl-date">{s.fechaLegible||fechaLarga(s.fecha)}</div>
-                          <div className={`en-dot ${s.tipo==="agua"?"blue":s.tipo==="tierra"?"green":"gray"}`}/>
-                        </div>
-                        <div className="en-tl-row">
-                          <div className="en-tl-kv"><span>Horario</span><strong>{s.horaInicio}–{s.horaFin}</strong></div>
-                          <div className="en-tl-kv"><span>Lugar</span><strong>{s.lugar}</strong></div>
-                          <div className="en-tl-kv"><span>Duración</span><strong>{s.duracionMin?`${s.duracionMin} min`:"—"}</strong></div>
-                          <div className="en-tl-kv"><span>Metros</span><strong>{s.tipo==="agua"?`${distOf||0} m`:"—"}</strong></div>
-                          <div className="en-tl-kv"><span>Ritmo</span><strong>{s.ritmo100||"—"}</strong></div>
-                          <div className="en-tl-kv"><span>RPE</span><strong>{s.rpe?`${s.rpe}/10`:"—"}</strong></div>
-                        </div>
-
-                        {/* Si hay bloques, listarlos */}
-                        {Array.isArray(s.bloques)&&s.bloques.length>0&&(
-                          <div className="en-tl-nota" style={{marginTop:8}}>
-                            <div style={{fontWeight:700,marginBottom:6}}>Bloques:</div>
-                            <ul style={{margin:0,paddingLeft:18}}>
-                              {s.bloques.map((b,ix)=>(
-                                <li key={ix}>
-                                  {b.estilo}: {b.series}×{b.metrosSerie} m = {b.metrosTotales ?? (b.series*b.metrosSerie)} m
-                                  {b.minutos?` · ${b.minutos} min`:''}
-                                  {b.ritmo100?` · ${b.ritmo100}`:''}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {s.notas&&<div className="en-tl-nota">{s.notas}</div>}
+              <div
+                className="en-timeline"
+                style={verMas?{maxHeight:isNarrow?'44vh':'40vh',overflowY:'auto',paddingRight:4,overscrollBehavior:'contain'}:{maxHeight:'unset',overflow:'visible',paddingRight:0}}
+              >
+                {(verMas?historial:historial.slice(idx,idx+1)).map((s)=>{
+                  const distOf = typeof s.distanciaTotal==="number" ? s.distanciaTotal :
+                    (Array.isArray(s.bloques)? s.bloques.reduce((a,b)=>a+((b.series||0)*(b.metrosSerie||0)),0): 0);
+                  return (
+                    <div key={s.id} className="en-tl-item" style={{padding:10}}>
+                      <div className="en-tl-head">
+                        <div className="en-tl-date">{s.fechaLegible||fechaLarga(s.fecha)}</div>
+                        <div className={`en-dot ${s.tipo==="agua"?"blue":s.tipo==="tierra"?"green":"gray"}`}/>
                       </div>
-                    );
-                  })}
-                </div>
-              </>
+                      <div className="en-tl-row">
+                        <div className="en-tl-kv"><span>Horario</span><strong>{s.horaInicio}–{s.horaFin}</strong></div>
+                        <div className="en-tl-kv"><span>Lugar</span><strong>{s.lugar}</strong></div>
+                        <div className="en-tl-kv"><span>Duración</span><strong>{s.duracionMin?`${s.duracionMin} min`:"—"}</strong></div>
+                        <div className="en-tl-kv"><span>Metros</span><strong>{s.tipo==="agua"?`${distOf||0} m`:"—"}</strong></div>
+                        <div className="en-tl-kv"><span>Ritmo</span><strong>{s.ritmo100||"—"}</strong></div>
+                        <div className="en-tl-kv"><span>RPE</span><strong>{s.rpe?`${s.rpe}/10`:"—"}</strong></div>
+                      </div>
+                      {Array.isArray(s.bloques)&&s.bloques.length>0&&(
+                        <div className="en-tl-nota" style={{marginTop:8}}>
+                          <div style={{fontWeight:700,marginBottom:6}}>Bloques:</div>
+                          <ul style={{margin:0,paddingLeft:18}}>
+                            {s.bloques.map((b,ix)=>(
+                              <li key={ix}>
+                                {b.estilo}: {b.series}×{b.metrosSerie} m = {b.metrosTotales ?? (b.series*b.metrosSerie)} m
+                                {b.minutos?` · ${b.minutos} min`:''}
+                                {b.ritmo100?` · ${b.ritmo100}`:''}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {s.notas&&<div className="en-tl-nota">{s.notas}</div>}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </aside>
@@ -539,22 +656,13 @@ export default function EntrenamientoNadador(){
           <div
             className="en-modal-card"
             onClick={(e)=>e.stopPropagation()}
-            style={{
-              width: isTiny ? '100%' : 'min(920px,100%)',
-              height: isTiny ? '100dvh' : 'auto',
-              maxHeight: isTiny ? '100dvh' : 'calc(100dvh - 32px)',
-              borderRadius: isTiny ? 0 : 18,
-              overflow: 'auto'
-            }}
+            style={{width:isTiny?'100%':'min(920px,100%)',height:isTiny?'100dvh':'auto',maxHeight:isTiny?'100dvh':'calc(100dvh - 32px)',borderRadius:isTiny?0:18,overflow:'auto'}}
           >
             <div className="en-modal-head">
               <h3>Medir frecuencia cardiaca</h3>
               <button className="en-x" onClick={()=>setShowPulso(false)}>×</button>
             </div>
-            <div
-              className="en-modal-body2"
-              style={{display:'grid',gridTemplateColumns:isNarrow?'1fr':'320px 1fr',gap:16,alignItems:'start'}}
-            >
+            <div className="en-modal-body2" style={{display:'grid',gridTemplateColumns:isNarrow?'1fr':'320px 1fr',gap:16,alignItems:'start'}}>
               <div className="en-modal-col">
                 <img className="en-modal-img" src={MODAL_IMG} alt="Guía para medir el pulso"/>
                 <div className="en-timer">
