@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../firebase/client";
 import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
-import { jsPDF } from "jspdf";
 import "./DOCSS/EntrenamientoNadador.css";
 
 const TIPOS=[{value:"agua",label:"Natación en agua"},{value:"tierra",label:"Fuerza/estabilidad"},{value:"otro",label:"Otro"}];
@@ -51,20 +50,25 @@ export default function EntrenamientoNadador(){
   const [bloques,setBloques]=useState([{ estilo:"Libre", series:1, metrosSerie:100, minutos:"" }]);
 
   useEffect(()=>{
-    let off=onAuthStateChanged(auth,(u)=>{
+    let unsubSnap=null;
+    const unsubAuth=onAuthStateChanged(auth,(u)=>{
       if(u?.uid){
         setUid(u.uid);
         const col=collection(db,"usuarios",u.uid,"entrenamientos");
         const qy=query(col,orderBy("startMs","desc"));
-        const offSnap=onSnapshot(qy,(snap)=>{setHistorial(snap.docs.map((d)=>({id:d.id,...d.data()})))});
-        off=()=>offSnap();
-      }else{setUid("");setHistorial([])}
+        if(typeof unsubSnap==="function") unsubSnap();
+        unsubSnap=onSnapshot(qy,(snap)=>{setHistorial(snap.docs.map((d)=>({id:d.id,...d.data()})))});
+      }else{
+        setUid("");
+        setHistorial([]);
+        if(typeof unsubSnap==="function"){unsubSnap();unsubSnap=null;}
+      }
     });
     const onKey=(e)=>{if(e.key==="Escape"){setShowPulso(false)}};
     const onResize=()=>setVw(window.innerWidth);
     window.addEventListener("keydown",onKey);
     window.addEventListener("resize",onResize);
-    return()=>{off&&off();window.removeEventListener("keydown",onKey);window.removeEventListener("resize",onResize)}
+    return()=>{if(typeof unsubSnap==="function")unsubSnap();if(typeof unsubAuth==="function")unsubAuth();window.removeEventListener("keydown",onKey);window.removeEventListener("resize",onResize)}
   },[]);
 
   useEffect(()=>{ setIdx(0) },[historial.length]);
@@ -255,7 +259,6 @@ const exportarPDF = async () => {
 
     let y = TOP;
 
-    // Título
     doc.setFont("helvetica","bold").setFontSize(22).setTextColor("#10223e");
     doc.text("Reporte de Entrenamientos — FlowUp", L, y);
     y += 22;
@@ -263,7 +266,6 @@ const exportarPDF = async () => {
     doc.text(new Date().toLocaleDateString("es-ES",{day:"numeric",month:"long",year:"numeric"}), L, y);
     doc.setTextColor("#10223e");
 
-    // KPIs
     y += 20;
     const kH = 56;
     const kGap = 10;
@@ -284,11 +286,10 @@ const exportarPDF = async () => {
     });
     y += kH + 26;
 
-    // Encabezado de tabla
     const cols = ["Fecha","Horario","Lugar","Durac.","Metros","Ritmo","RPE"];
-    const widths = [120,86,150,50,58,70,34]; // total ≈ ancho útil
-    const lineH = 15;             // altura de línea texto
-    const rowPadY = 8;            // padding vertical de fila
+    const widths = [120,86,150,50,58,70,34];
+    const lineH = 15;
+    const rowPadY = 8;
 
     const drawHeader = () => {
       doc.setFontSize(10).setTextColor("#5b6b8a");
@@ -301,11 +302,10 @@ const exportarPDF = async () => {
     };
     drawHeader();
 
-    // Cuerpo
     for(const s of historial){
       const fechaTxt = s.fechaLegible ? s.fechaLegible : (s.fecha ? fechaCortaES(s.fecha) : "");
       const distTxt = s.tipo==="agua" ? `${distOf(s)||0} m` : "—";
-      const ritmoTxt = s.ritmo100 ? s.ritmo100.replace(" /100m","") : "—"; // acorta etiqueta
+      const ritmoTxt = s.ritmo100 ? s.ritmo100.replace(" /100m","") : "—";
 
       const row = [
         fechaTxt,
@@ -317,7 +317,6 @@ const exportarPDF = async () => {
         s.rpe ? `${s.rpe}` : "—"
       ];
 
-      // Calcular alto de fila en función del contenido (ajustando por columna)
       const cellLines = [];
       row.forEach((txt,i)=>{
         const maxW = widths[i]-6;
@@ -327,7 +326,6 @@ const exportarPDF = async () => {
       const maxLines = Math.max(...cellLines.map(ls=>ls.length));
       let rowH = maxLines*lineH + rowPadY;
 
-      // Bloques y notas forman un bloque debajo
       let extraText = "";
       if (Array.isArray(s.bloques) && s.bloques.length){
         const t = s.bloques.map(b=>{
@@ -344,14 +342,12 @@ const exportarPDF = async () => {
       const extraLines = extraText ? doc.splitTextToSize(extraText, W - L - R) : [];
       const extraH = extraLines.length ? extraLines.length*13 + 10 : 0;
 
-      // Salto de página si no cabe todo
-      if (y + rowH + (extraH?extraH+8:0) > H - BOT){
+      if (y + rowH + (extraH?extraH+8:0) > H - 64){
         doc.addPage();
-        y = TOP;
+        y = 60;
         drawHeader();
       }
 
-      // Dibujo de fila
       let x=L;
       doc.setFontSize(11);
       cellLines.forEach((lines,i)=>{
@@ -360,7 +356,6 @@ const exportarPDF = async () => {
       });
       y += rowH;
 
-      // Extra (bloques/notas) en cajita
       if (extraLines.length){
         doc.setDrawColor(219,231,255).setFillColor(247,251,255);
         doc.roundedRect(L, y, W-L-R, extraH, 6, 6, "FD");
@@ -370,7 +365,6 @@ const exportarPDF = async () => {
         y += extraH;
       }
 
-      // Separador
       doc.setDrawColor(233,238,250);
       doc.line(L, y+4, W-R, y+4);
       y += 10;
@@ -383,7 +377,6 @@ const exportarPDF = async () => {
     console.error(e);
   }
 };
-
 
   return(
     <div className="en-wrap">
@@ -474,12 +467,10 @@ const exportarPDF = async () => {
                   <label className="en-field en-with-unit">
                     <span>Metros por serie</span>
                     <input type="number" inputMode="numeric" value={b.metrosSerie} onChange={e=>updateBloque(i,"metrosSerie",Number(e.target.value))}/>
-
                   </label>
                   <label className="en-field en-with-unit">
                     <span>Minutos (opcional)</span>
                     <input type="number" inputMode="numeric" placeholder="p.ej. 10" value={b.minutos} onChange={e=>updateBloque(i,"minutos",e.target.value)}/>
-
                   </label>
                   <div className="en-field">
                     <span>Bloque</span>
