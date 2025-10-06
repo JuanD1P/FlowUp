@@ -445,11 +445,11 @@ export default function PerfilNadador() {
               </label>
               <label className="pf-field pf-span-2">
                 <span>Objetivo general</span>
-                <input name="objetivoGeneral" type="text" value={values.objetivoGeneral} onChange={handleChange} placeholder='Ej. "Mejorar condición y competir en máster"' />
+                <input name="objetivoGeneral" type="text" value={values.objetivoGeneral} onChange={handleChange} placeholder='Ej. "Bajar peso y mejorar resistencia"; "Prepararme para competir en 100m libre"' />
               </label>
               <label className="pf-field pf-span-2">
                 <span>Condiciones médicas / lesiones</span>
-                <textarea name="condicionesMedicas" rows={3} value={values.condicionesMedicas} onChange={handleChange} placeholder="Opcional" />
+                <textarea name="condicionesMedicas" rows={3} value={values.condicionesMedicas} onChange={handleChange} placeholder="Ej.: tendinitis de hombro, lumbar, menisco, cardiopatía leve, hipertensión controlada" />
               </label>
             </div>
           </section>
