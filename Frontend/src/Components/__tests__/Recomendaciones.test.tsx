@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, within } from "@testing-library/react";
 
 // ⏱️ Fijamos Date.now SIN fake timers (evita bloquear microtasks)
 const FIXED_NOW = new Date("2025-03-01T12:00:00Z").getTime();
@@ -105,7 +105,6 @@ describe("<Recomendaciones />", () => {
   it("muestra cabecera con nombre, objetivo y métricas base", async () => {
     render(<Recomendaciones />);
 
-    // 👇 Usamos el H1 para evitar el conflicto con el H2 del bloque
     const h1 = await screen.findByRole("heading", {
       level: 1,
       name: /Recomendaciones personalizadas/i,
@@ -121,7 +120,11 @@ describe("<Recomendaciones />", () => {
     expect(screen.getByText(/50 kg/)).toBeInTheDocument();
     expect(screen.getByText(/1500 ml/)).toBeInTheDocument();        // 50*30
     expect(screen.getByText(/70–90 g\/día/i)).toBeInTheDocument();  // 1.4–1.8 g/kg
-    expect(screen.getByText(/150 mg/i)).toBeInTheDocument();        // 3 mg/kg
+
+    // ✅ Buscar el valor de cafeína solo dentro de "Tu línea base"
+    const baseHeading = await screen.findByRole('heading', { name: /Tu línea base/i });
+    const baseCard = baseHeading.closest('.rc-card') as HTMLElement;
+    expect(within(baseCard).getByText(/^150 mg$/i)).toBeInTheDocument(); // 3 mg/kg
   });
 
   it("incluye recomendaciones PERSONALIZADAS por lesión de hombro", async () => {
