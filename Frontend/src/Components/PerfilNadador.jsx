@@ -1,7 +1,8 @@
+// src/pages/PerfilNadador.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { onAuthStateChanged, updateProfile } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where } from "firebase/firestore"; // ← NUEVO: collection, query, where
 import { auth, db } from "../firebase/client";
 import { FiEdit2, FiX, FiRefreshCw, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import multiavatar from "@multiavatar/multiavatar";
@@ -45,7 +46,6 @@ const INITIAL = {
 function labelOf(options, value) {
   return options.find((o) => o.value === value)?.label || "";
 }
-
 function calcEdad(isoDate) {
   if (!isoDate) return "";
   const hoy = new Date();
@@ -55,28 +55,23 @@ function calcEdad(isoDate) {
   if (m < 0 || (m === 0 && hoy.getDate() < d.getDate())) e--;
   return e >= 0 && e < 130 ? String(e) : "";
 }
-
 function formatDateEs(isoDate) {
   if (!isoDate) return "";
   const [y, m, d] = isoDate.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   return new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "long", year: "numeric" }).format(dt);
 }
-
 function svgToDataUrl(svgStr, size = 256) {
   const fixed = svgStr.replace("<svg ", `<svg width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet" `);
   return `data:image/svg+xml;utf8,${encodeURIComponent(fixed)}`;
 }
-
 function buildAvatarDataUrl(seed, size = 256) {
   const svg = multiavatar(String(seed || "FlowUp"));
   return svgToDataUrl(svg, size);
 }
-
 function randInt(max) {
   return Math.floor(Math.random() * max);
 }
-
 function seedsFrom(base, total = 24) {
   const b = String(base || "FlowUp").replace(/\s+/g, "-");
   const salt = Date.now().toString(36).slice(-4);
@@ -118,6 +113,7 @@ function SelectFluid({ label, name, options, value, onChange }) {
 }
 
 export default function PerfilNadador() {
+  // ---- State
   const [uid, setUid] = useState(null);
   const [values, setValues] = useState(INITIAL);
   const [loading, setLoading] = useState(true);
@@ -127,23 +123,33 @@ export default function PerfilNadador() {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [avatarSeeds, setAvatarSeeds] = useState([]);
   const [toasts, setToasts] = useState([]);
+
+  // Equipo actual seleccionado por el usuario
+  const [equipoId, setEquipoId] = useState(null);       // equipo actual (desde doc usuario o selección)
+  const [teamName, setTeamName] = useState("");
+
+  // NUEVO: lista de equipos a los que pertenece el usuario y selección en edición
+  const [teams, setTeams] = useState([]);               // [{id, name}]
+  const [selectedTeamId, setSelectedTeamId] = useState(null);
+
   const navigate = useNavigate();
   const avRef = useRef(null);
 
+  // ---- Toast helpers
   const showToast = (message, variant = "info", title = "", icon = "", duration = 3000) => {
     const id = Date.now() + Math.random();
     setToasts((ts) => [...ts, { id, message, variant, title, icon, duration }]);
   };
-
   const removeToast = (id) => setToasts((ts) => ts.filter((t) => t.id !== id));
 
+  // ---- Lock scroll when avatar modal is open
   useEffect(() => {
     const prev = document.body.style.overflow;
-    if (avatarOpen) document.body.style.overflow = "hidden";
-    else document.body.style.overflow = "";
+    document.body.style.overflow = avatarOpen ? "hidden" : "";
     return () => { document.body.style.overflow = prev; };
   }, [avatarOpen]);
 
+  // ---- Load user doc and read equipoId
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (!user) { navigate("/userlogin"); return; }
@@ -173,11 +179,15 @@ export default function PerfilNadador() {
           setValues(v);
           setHasProfile(true);
           setEditMode(false);
+          setEquipoId(d.equipo || null);
+          setSelectedTeamId(d.equipo || null); // ← NUEVO: inicializa selección con su equipo actual
         } else {
           const seed = user.displayName || user.uid || "FlowUp";
           setValues({ ...base, avatarSeed: seed, fotoURL: buildAvatarDataUrl(seed, 256) });
           setHasProfile(false);
           setEditMode(false);
+          setEquipoId(null);
+          setSelectedTeamId(null);
         }
       } catch {
         showToast("No se pudo cargar tu perfil.", "warning", "Atención", "⚠");
@@ -188,6 +198,65 @@ export default function PerfilNadador() {
     return () => unsub();
   }, [navigate]);
 
+  // ---- Listen team name for equipoId y reflejar en club
+  useEffect(() => {
+    if (!equipoId) {
+      setTeamName("");
+      return;
+    }
+    const ref = doc(db, "equipos", equipoId);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.data();
+        const nombre = data?.name || "";
+        setTeamName(nombre);
+        setValues((s) => ({ ...s, club: nombre }));
+      },
+      () => {
+        getDoc(ref)
+          .then((s) => {
+            const data = s.data();
+            const nombre = data?.name || "";
+            setTeamName(nombre);
+            setValues((v) => ({ ...v, club: nombre || v.club }));
+          })
+          .catch(() => {});
+      }
+    );
+    return () => unsub();
+  }, [equipoId]);
+
+  // ---- NUEVO: Cargar lista de equipos a los que pertenece el usuario
+  useEffect(() => {
+    if (!uid) { setTeams([]); return; }
+
+    const qMiembro = query(collection(db, "equipos"), where("miembros", "array-contains", uid));
+    const qCoach  = query(collection(db, "equipos"), where("ownerId", "==", uid)); // por si también es coach
+
+    const unsub1 = onSnapshot(qMiembro, (snap) => {
+      const rows = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+      setTeams(prev => {
+        // mezcla con los ya existentes del otro query
+        const map = new Map(prev.map(t => [t.id, t]));
+        rows.forEach(r => map.set(r.id, { id: r.id, name: r.name || r.nombre || "(sin nombre)" }));
+        return Array.from(map.values());
+      });
+    });
+
+    const unsub2 = onSnapshot(qCoach, (snap) => {
+      const rows = snap.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+      setTeams(prev => {
+        const map = new Map(prev.map(t => [t.id, t]));
+        rows.forEach(r => map.set(r.id, { id: r.id, name: r.name || r.nombre || "(sin nombre)" }));
+        return Array.from(map.values());
+      });
+    });
+
+    return () => { unsub1(); unsub2(); };
+  }, [uid]);
+
+  // ---- Derived values
   const edad = useMemo(() => calcEdad(values.fechaNacimiento), [values.fechaNacimiento]);
   const fechaLarga = useMemo(() => formatDateEs(values.fechaNacimiento), [values.fechaNacimiento]);
   const imc = useMemo(() => {
@@ -206,16 +275,23 @@ export default function PerfilNadador() {
 
   const seedBase = useMemo(() => values.nombre || uid || "FlowUp", [values.nombre, uid]);
 
+  // ---- Handlers
   const handleNum = (name) => (e) => {
     const v = e.target.value.replace(",", ".");
     if (v === "" || /^(\d+(\.\d*)?)$/.test(v)) {
       setValues((s) => ({ ...s, [name]: v }));
     }
   };
-
   const handleChange = (e) => {
     const { name, value } = e.target;
     setValues((s) => ({ ...s, [name]: value }));
+  };
+
+  // NUEVO: cuando cambia la selección de equipo en el selector
+  const handleSelectEquipo = (eLike) => {
+    const newId = eLike?.target?.value ?? null;   // SelectFluid te pasa {target:{name,value}}
+    setSelectedTeamId(newId);
+    setEquipoId(newId); // dispara el listener para cargar nombre y reflejar en "club"
   };
 
   const validate = () => null;
@@ -228,35 +304,46 @@ export default function PerfilNadador() {
       setSaving(true);
       const seed = values.avatarSeed || values.nombre || uid || "FlowUp";
       const fotoURL = buildAvatarDataUrl(seed, 256);
+
       if (auth.currentUser && values.nombre && auth.currentUser.displayName !== values.nombre) {
         await updateProfile(auth.currentUser, { displayName: values.nombre, photoURL: fotoURL });
       }
+
       const refDoc = doc(db, "usuarios", uid);
-      await setDoc(refDoc, {
-        nombre: values.nombre,
-        email: values.email,
-        fotoURL,
-        perfilCompleto: true,
-        actualizadoEn: serverTimestamp(),
-        avatarSeed: seed,
-        nadador: {
-          fechaNacimiento: values.fechaNacimiento || null,
-          genero: values.genero || null,
-          alturaCm: values.alturaCm === "" ? null : Number(values.alturaCm),
-          pesoKg: values.pesoKg === "" ? null : Number(values.pesoKg),
-          imc: imc === "" ? null : Number(imc),
-          fcReposo: values.fcReposo === "" ? null : Number(values.fcReposo),
-          categoria: values.categoria || null,
-          club: values.club || null,
-          telefono: values.telefono || null,
-          objetivoGeneral: values.objetivoGeneral || null,
-          condicionesMedicas: values.condicionesMedicas || null,
+      // el equipo a guardar es el seleccionado (puede ser null si quitó selección)
+      const equipoAGuardar = selectedTeamId || null;
+
+      await setDoc(
+        refDoc,
+        {
+          nombre: values.nombre,
+          email: values.email,
           fotoURL,
+          perfilCompleto: true,
+          actualizadoEn: serverTimestamp(),
           avatarSeed: seed,
-          actualizadoEn: serverTimestamp()
-        }
-      }, { merge: true });
-      setValues((s) => ({ ...s, fotoURL }));
+          equipo: equipoAGuardar, // ← NUEVO: guardamos el equipo elegido
+          nadador: {
+            fechaNacimiento: values.fechaNacimiento || null,
+            genero: values.genero || null,
+            alturaCm: values.alturaCm === "" ? null : Number(values.alturaCm),
+            pesoKg: values.pesoKg === "" ? null : Number(values.pesoKg),
+            imc: imc === "" ? null : Number(imc),
+            fcReposo: values.fcReposo === "" ? null : Number(values.fcReposo),
+            categoria: values.categoria || null,
+            club: teamName || values.club || null, // al tener equipo seleccionado, 'teamName' ya refleja su nombre
+            telefono: values.telefono || null,
+            objetivoGeneral: values.objetivoGeneral || null,
+            condicionesMedicas: values.condicionesMedicas || null,
+            fotoURL,
+            avatarSeed: seed,
+            actualizadoEn: serverTimestamp()
+          }
+        },
+        { merge: true }
+      );
+
+      setValues((s) => ({ ...s, fotoURL, club: teamName || s.club }));
       setHasProfile(true);
       setEditMode(false);
       setAvatarOpen(false);
@@ -268,21 +355,15 @@ export default function PerfilNadador() {
     }
   };
 
-  const openAvatar = () => {
-    setAvatarSeeds(seedsFrom(seedBase, 24));
-    setAvatarOpen(true);
-  };
-
+  const openAvatar = () => { setAvatarSeeds(seedsFrom(seedBase, 24)); setAvatarOpen(true); };
   const closeAvatar = () => setAvatarOpen(false);
   const refreshAvatars = () => setAvatarSeeds(seedsFrom(seedBase, 24));
-
   const pickAvatar = (seed) => {
     const url = buildAvatarDataUrl(seed, 256);
     setValues((s) => ({ ...s, avatarSeed: seed, fotoURL: url }));
     closeAvatar();
     showToast("Avatar actualizado", "info", "¡Genial!", "ℹ");
   };
-
   const slideAvatars = (dir) => {
     const el = avRef.current;
     if (!el) return;
@@ -292,6 +373,12 @@ export default function PerfilNadador() {
   };
 
   if (loading) return <div className="pf-loading">Cargando perfil…</div>;
+
+  // Opciones para el selector de equipos
+  const teamOptions = teams
+    .slice()
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "", "es", { sensitivity: "base" }))
+    .map(t => ({ value: t.id, label: t.name || "(sin nombre)" }));
 
   return (
     <div className="pf-page">
@@ -312,7 +399,7 @@ export default function PerfilNadador() {
               <button form="pf-form" className="btn-primary" type="submit" disabled={saving}>
                 {saving ? "Guardando…" : "Guardar"}
               </button>
-              <button type="button" className="btn-secondary" onClick={() => { setEditMode(false); setAvatarOpen(false); }} disabled={saving}>
+              <button type="button" className="btn-secondary" onClick={() => { setEditMode(false); setAvatarOpen(false); setSelectedTeamId(equipoId); }} disabled={saving}>
                 Cancelar
               </button>
             </>
@@ -407,38 +494,43 @@ export default function PerfilNadador() {
           </section>
 
           <section className="pf-card">
-            <h3>Estado físico</h3>
-            <div className="pf-grid">
-              <label className="pf-field">
-                <span>Altura (cm)</span>
-                <input name="alturaCm" inputMode="decimal" value={values.alturaCm} onChange={handleNum("alturaCm")} placeholder="Ej. 170" />
-              </label>
-              <label className="pf-field">
-                <span>Peso (kg)</span>
-                <input name="pesoKg" inputMode="decimal" value={values.pesoKg} onChange={handleNum("pesoKg")} placeholder="Ej. 65.5" />
-              </label>
-              <label className="pf-field">
-                <span>IMC</span>
-                <input value={imc} readOnly disabled />
-              </label>
-              <label className="pf-field">
-                <span>FC en reposo (bpm)</span>
-                <input name="fcReposo" inputMode="numeric" value={values.fcReposo} onChange={handleNum("fcReposo")} placeholder="Opcional" />
-              </label>
-            </div>
-          </section>
-
-          <section className="pf-card">
             <h3>Contexto</h3>
             <div className="pf-grid">
               <label className="pf-field">
                 <span>Categoría</span>
                 <SelectFluid label="Selecciona…" name="categoria" options={CATEGORY_OPTS} value={values.categoria} onChange={handleChange}/>
               </label>
+
+              {/* NUEVO: Selector de equipo al editar */}
+              <label className="pf-field">
+                <span>Equipo (a elegir)</span>
+                {teamOptions.length > 0 ? (
+                  <SelectFluid
+                    label="Selecciona tu equipo…"
+                    name="equipoId"
+                    options={teamOptions}
+                    value={selectedTeamId || ""}
+                    onChange={handleSelectEquipo}
+                  />
+                ) : (
+                  <input value="No perteneces a ningún equipo" readOnly disabled />
+                )}
+                <small className="pf-hint">Solo aparecen los equipos donde ya eres miembro.</small>
+              </label>
+
+              {/* El campo Club / Equipo ahora solo refleja el nombre */}
               <label className="pf-field">
                 <span>Club / Equipo</span>
-                <input name="club" type="text" value={values.club} onChange={handleChange} placeholder="Opcional" />
+                <input
+                  name="club"
+                  type="text"
+                  value={values.club}
+                  readOnly
+                  disabled
+                />
+                <small className="pf-hint">Se completa automáticamente con el nombre del equipo seleccionado.</small>
               </label>
+
               <label className="pf-field">
                 <span>Teléfono</span>
                 <input name="telefono" type="tel" value={values.telefono} onChange={handleChange} placeholder="Opcional" autoComplete="tel" />
@@ -465,7 +557,7 @@ export default function PerfilNadador() {
                 <div className="pf-avatar sm"><img src={currentAvatar} alt="" /></div>
                 <div>
                   <h4>Elige tu avatar</h4>
-                  <p>Basado en {seedBase}</p>
+                  <p>Basado en {values.nombre || uid || "FlowUp"}</p>
                 </div>
               </div>
               <div className="pf-modal__actions">

@@ -14,7 +14,7 @@ import Recomendaciones from './Components/Recomendaciones';
 import AñadirNadadores from './Components/AñadirNadadores';
 import VerEquipo from './Components/VerEquipo';
 import EquiposAdmin from './Components/EquiposAdmin';
-import VerEquipoAdmin from './Components/VerEquipAdmin';
+import VerEquipAdmin from './Components/VerEquipAdmin';
 
 function App() {
     return (
@@ -40,9 +40,9 @@ function App() {
                         </ProtectedRoute>
                     } />
 
-                    <Route path="/VerEquipoAdmin" element={
+                    <Route path="/VerEquipAdmin" element={
                         <ProtectedRoute allowedRoles={['ADMIN']}>
-                            <VerEquipoAdmin />
+                            <VerEquipAdmin />
                         </ProtectedRoute>
                     } />
 

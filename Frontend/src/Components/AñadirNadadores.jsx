@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../firebase/client";
 import ToastStack from "./ToastStack";
-import "./DOCSS/AñadirNadadores.css"; 
+import "./DOCSS/AñadirNadadores.css";
 
 // ===== Helpers =====
 function initialsOf(nameOrEmail = "") {
@@ -48,7 +48,6 @@ export default function AñadirNadadores() {
   };
   const closeToast = (id) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
-
   useEffect(() => {
     setLoading(true);
     setErr("");
@@ -65,7 +64,9 @@ export default function AñadirNadadores() {
             rol: data.rol ?? "USER",
           };
         });
-        rows.sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }));
+        rows.sort((a, b) =>
+          a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+        );
         setNadadores(rows);
         setLoading(false);
       },
@@ -81,9 +82,12 @@ export default function AñadirNadadores() {
 
   const listaFiltrada = useMemo(() => {
     const f = filtro.trim().toLowerCase();
-    if (!f) return nadadores;
+    // 🔎 Cambio clave: si no hay filtro, NO mostrar ningún nadador
+    if (!f) return [];
     return nadadores.filter(
-      (n) => n.nombre.toLowerCase().includes(f) || (n.email && n.email.toLowerCase().includes(f))
+      (n) =>
+        n.nombre.toLowerCase().includes(f) ||
+        (n.email && n.email.toLowerCase().includes(f))
     );
   }, [nadadores, filtro]);
 
@@ -146,7 +150,12 @@ export default function AñadirNadadores() {
       const equipoRef = doc(db, "equipos", equipoId);
       const teamSnap = await getDoc(equipoRef);
       if (!teamSnap.exists()) {
-        pushToast({ variant: "error", icon: "❌", title: "Equipo no encontrado", message: "El equipo no existe." });
+        pushToast({
+          variant: "error",
+          icon: "❌",
+          title: "Equipo no encontrado",
+          message: "El equipo no existe.",
+        });
         return;
       }
       const ownerId = teamSnap.data()?.ownerId;
@@ -206,7 +215,12 @@ export default function AñadirNadadores() {
             e?.code === "permission-denied"
               ? "No se pudieron marcar las sesiones (revisa que tu rol sea USEREN/ADMIN)."
               : e?.message || "No se pudieron marcar las sesiones.";
-          pushToast({ variant: "error", icon: "❌", title: "Backfill incompleto", message: msg });
+          pushToast({
+            variant: "error",
+            icon: "❌",
+            title: "Backfill incompleto",
+            message: msg,
+          });
         }
 
         navigate(`/VerEquipo?equipo=${equipoId}`);
@@ -226,6 +240,8 @@ export default function AñadirNadadores() {
     }
   };
 
+  const hayFiltro = filtro.trim().length > 0;
+
   return (
     <div className="coach-page aqua-page">
       <div className="aqua-container slim swimmers-one-col">
@@ -233,10 +249,11 @@ export default function AñadirNadadores() {
           <div>
             <h2>🏊‍♂️ Añadir Nadadores</h2>
             <p className="sub">
-              Elige atletas para agregarlos al equipo.{" "}
-              <span style={{ opacity: 0.75 }}>
-                {loading ? "Cargando…" : `(${nadadores.length} encontrados)`}
-              </span>
+              {hayFiltro
+                ? (loading
+                    ? "Buscando…"
+                    : `(${listaFiltrada.length} coincidencia${listaFiltrada.length === 1 ? "" : "s"})`)
+                : "Escribe para buscar por nombre o email"}
             </p>
           </div>
 
@@ -275,8 +292,14 @@ export default function AñadirNadadores() {
 
         {err && <div className="error-banner">Error: {err}</div>}
 
-        {/* Lista */}
-        {loading ? (
+        {/* Estado vacío inicial sin lista */}
+        {!hayFiltro ? (
+          <div className="card empty aqua-glass" style={{ marginTop: 12 }}>
+            <div className="empty-icon" aria-hidden>🔎</div>
+            <h3>Empieza a buscar</h3>
+            <p>Escribe el nombre o el correo del nadador.</p>
+          </div>
+        ) : loading ? (
           <div className="grid pretty-grid">
             {Array.from({ length: 6 }).map((_, i) => (
               <div className="swimmer-card skeleton" key={i}>
@@ -286,11 +309,9 @@ export default function AñadirNadadores() {
           </div>
         ) : listaFiltrada.length === 0 ? (
           <div className="card empty aqua-glass">
-            <div className="empty-icon" aria-hidden>
-              🌊
-            </div>
-            <h3>No hay nadadores para mostrar</h3>
-            <p>Intenta con otro nombre o revisa más tarde.</p>
+            <div className="empty-icon" aria-hidden>🌊</div>
+            <h3>Sin coincidencias</h3>
+            <p>Intenta con otro término de búsqueda.</p>
           </div>
         ) : (
           <div className="grid pretty-grid">

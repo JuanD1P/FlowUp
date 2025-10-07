@@ -10,6 +10,7 @@ const api = axios.create({
   baseURL: "http://localhost:3000",
   withCredentials: true,
 });
+
 api.interceptors.request.use((config) => {
   const t = localStorage.getItem("auth-token");
   if (t) config.headers.Authorization = `Bearer ${t}`;
@@ -22,7 +23,9 @@ export default function Admin() {
   const [uLoading, setULoading] = useState(false);
   const [uErr, setUErr] = useState("");
 
-  useEffect(() => { obtenerUsuarios(); }, []);
+  useEffect(() => {
+    obtenerUsuarios();
+  }, []);
 
   const obtenerUsuarios = async () => {
     try {
@@ -84,6 +87,7 @@ export default function Admin() {
 
   const cambiarRol = async (id, rolActual, nuevoRol) => {
     if (rolActual === nuevoRol) return;
+
     const { isConfirmed } = await Swal.fire({
       title: "Cambiar rol",
       text: `¿Cambiar rol a ${nuevoRol}?`,
@@ -102,6 +106,7 @@ export default function Admin() {
         cancelButton: "sw-cancel",
       },
     });
+
     if (!isConfirmed) return;
 
     try {
@@ -128,6 +133,9 @@ export default function Admin() {
 
   return (
     <div className="admin-page">
+      {/* Espaciador que baja el header debajo de la navbar */}
+      <div className="nav-spacer" aria-hidden="true" />
+
       <div className="admin-overlay" />
 
       <header className="admin-header glass-strong">
@@ -164,7 +172,7 @@ export default function Admin() {
               <tbody>
                 {uLoading ? (
                   <tr>
-                    <td colSpan={5}>
+                    <td colSpan={4}>
                       <div className="skeleton-row" />
                       <div className="skeleton-row" />
                       <div className="skeleton-row" />
@@ -181,7 +189,9 @@ export default function Admin() {
                         <select
                           className="admin-role-select"
                           value={u.rol || "USER"}
-                          onChange={(e) => cambiarRol(u.id, u.rol, e.target.value)}
+                          onChange={(e) =>
+                            cambiarRol(u.id, u.rol, e.target.value)
+                          }
                         >
                           <option value="USER">NADADOR</option>
                           <option value="USEREN">ENTRENADOR</option>
@@ -201,7 +211,9 @@ export default function Admin() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="cell-empty">No hay usuarios</td>
+                    <td colSpan={5} className="cell-empty">
+                      No hay usuarios
+                    </td>
                   </tr>
                 )}
               </tbody>

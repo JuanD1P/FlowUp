@@ -67,6 +67,21 @@ userRouter.get("/equipos/:Id/miembros", async (req, res) => {
   }
 });
 
+//obtener equipo del usuario
+userRouter.get("/usuarios/:id/equipo", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const snap = await firestoreAdmin.collection("usuarios").doc(id).get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+    const data = snap.data();
+    res.json({ equipo: data.equipo });
+  } catch (e) {
+    res.status(500).json({ error: "No se pudo obtener el equipo del usuario" });
+  }
+});
+
 //obtener todos los equipos
 userRouter.get("/equipos", async (req, res) => {
   try {
@@ -75,5 +90,56 @@ userRouter.get("/equipos", async (req, res) => {
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: "No se pudo obtener los equipos" });
+  }
+});
+
+//eliminar equipo
+// eliminar equipo
+userRouter.delete("/equipos/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const teamRef = firestoreAdmin.collection("equipos").doc(id);
+    const teamSnap = await teamRef.get();
+
+    if (!teamSnap.exists) {
+      return res.status(404).json({ error: "El equipo no existe" });
+    }
+
+    // 1) Borrar subcolección 'nadadores' (si no usas recursiveDelete)
+    const nadadoresSnap = await teamRef.collection("nadadores").get();
+    if (!nadadoresSnap.empty) {
+      const BATCH = 450;
+      for (let i = 0; i < nadadoresSnap.docs.length; i += BATCH) {
+        const batch = firestoreAdmin.batch();
+        nadadoresSnap.docs.slice(i, i + BATCH).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+
+    // 2) (Opcional pero recomendado) limpiar usuarios que apunten a este equipo
+    const usersSnap = await firestoreAdmin
+      .collection("usuarios")
+      .where("equipo", "==", id)
+      .get();
+
+    if (!usersSnap.empty) {
+      const BATCH = 450;
+      for (let i = 0; i < usersSnap.docs.length; i += BATCH) {
+        const batch = firestoreAdmin.batch();
+        usersSnap.docs.slice(i, i + BATCH).forEach((uDoc) => {
+          // quita la referencia; usa delete para remover el campo
+          batch.update(uDoc.ref, { equipo: admin.firestore.FieldValue.delete?.() ?? null });
+        });
+        await batch.commit();
+      }
+    }
+
+    // 3) Borrar el documento del equipo
+    await teamRef.delete();
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE /equipos error:", e);
+    return res.status(500).json({ error: "No se pudo eliminar el equipo" });
   }
 });

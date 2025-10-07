@@ -1,3 +1,4 @@
+// src/components/EquiposAdmin.jsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
@@ -21,6 +22,7 @@ export default function EquiposAdmin() {
   const [equipos, setEquipos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     obtenerEquipos();
@@ -54,10 +56,8 @@ export default function EquiposAdmin() {
 
         let miembrosCount = 0;
         if (Array.isArray(eq.miembros)) {
-          // cuenta miembros distintos al ownerId
           miembrosCount = eq.miembros.filter((uid) => uid && uid !== eq.ownerId).length;
         } else if (Number.isFinite(eq.swimmersCount)) {
-          // si solo hay swimmersCount, asumimos que incluye al owner y restamos 1 (mínimo 0)
           miembrosCount = Math.max(0, eq.swimmersCount - 1);
         }
 
@@ -78,6 +78,9 @@ export default function EquiposAdmin() {
   };
 
   const eliminarEquipo = async (id, nombre) => {
+    // deshabilitar botón mientras está abierto el modal
+    setDeletingId(id);
+
     const result = await Swal.fire({
       title: "¿Eliminar equipo?",
       html: `Esto eliminará el documento del equipo <b>${nombre || id}</b>.`,
@@ -86,7 +89,6 @@ export default function EquiposAdmin() {
       confirmButtonText: "Sí, eliminar",
       cancelButtonText: "Cancelar",
       reverseButtons: true,
-      showLoaderOnConfirm: true,
       buttonsStyling: false,
       customClass: {
         popup: "sw-popup",
@@ -96,6 +98,8 @@ export default function EquiposAdmin() {
         confirmButton: "sw-confirm",
         cancelButton: "sw-cancel",
       },
+      showLoaderOnConfirm: true,
+      allowOutsideClick: () => !Swal.isLoading(),
       preConfirm: async () => {
         try {
           await api.delete(`/api/equipos/${id}`);
@@ -106,20 +110,27 @@ export default function EquiposAdmin() {
           return false;
         }
       },
-      allowOutsideClick: () => !Swal.isLoading(),
     });
 
-    if (result.isConfirmed) {
-      await obtenerEquipos();
-      Swal.fire({
-        icon: "success",
-        title: "Equipo eliminado",
-        timer: 1200,
-        showConfirmButton: false,
-        customClass: { popup: "sw-popup" },
-        buttonsStyling: false,
-      });
+    // Si canceló, liberar botón y salir
+    if (!result.isConfirmed) {
+      setDeletingId(null);
+      return;
     }
+
+    // Ya se eliminó en el backend: actualiza UI
+    setEquipos((prev) => prev.filter((e) => e.id !== id));
+
+    await Swal.fire({
+      icon: "success",
+      title: "Equipo eliminado",
+      timer: 1200,
+      showConfirmButton: false,
+      customClass: { popup: "sw-popup" },
+      buttonsStyling: false,
+    });
+
+    setDeletingId(null);
   };
 
   return (
@@ -173,7 +184,7 @@ export default function EquiposAdmin() {
                       <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button
                           className="btn"
-                          onClick={() => navigate(`/VerEquipoAdmin?id=${eq.id}`)}
+                          onClick={() => navigate(`/VerEquipAdmin?id=${eq.id}`)}
                           title="Ver equipo"
                         >
                           Ver equipo
@@ -182,15 +193,19 @@ export default function EquiposAdmin() {
                           className="btn danger"
                           onClick={() => eliminarEquipo(eq.id, eq.nombreVisible)}
                           title="Eliminar equipo"
+                          disabled={deletingId === eq.id}
                         >
-                          <span className="x">✖</span> Eliminar
+                          <span className="x">✖</span>{" "}
+                          {deletingId === eq.id ? "Eliminando..." : "Eliminar"}
                         </button>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="cell-empty">No hay equipos registrados</td>
+                    <td colSpan={4} className="cell-empty">
+                      No hay equipos registrados
+                    </td>
                   </tr>
                 )}
               </tbody>
