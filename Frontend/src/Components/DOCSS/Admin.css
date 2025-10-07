@@ -29,9 +29,7 @@
 
 /* Espaciador debajo de la navbar fija */
 .nav-spacer{
-  height: var(--nav-h);
-  width: 100%;
-  flex: 0 0 auto;
+
 }
 
 /* Overlay del fondo (no bloquea clics) */
