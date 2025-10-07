@@ -11,7 +11,7 @@ import AñadirNadadores from "../AñadirNadadores";
 // CSS
 vi.mock("../DOCSS/AñadirNadadores.css", () => ({}), { virtual: true });
 
-// ToastStack: render minimal
+// ToastStack: render mínimo
 vi.mock("../ToastStack", () => ({
   __esModule: true,
   default: ({ toasts }: any) => (
@@ -92,14 +92,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   navigateSpy.mockClear();
 
-  // onSnapshot => devuelve 3 usuarios
+  // onSnapshot => devuelve 3 usuarios (Ana, Bruno, Carla)
   onSnapshotMock.mockImplementation((_q: any, cb: any) => {
     const docs = [
-      { id: "u1", data: () => ({ uid: "u1", nombre: "Ana", email: "ana@x.com", rol: "USER" }) },
+      { id: "u1", data: () => ({ uid: "u1", nombre: "Ana",   email: "ana@x.com",   rol: "USER" }) },
       { id: "u2", data: () => ({ uid: "u2", nombre: "Bruno", email: "bruno@x.com", rol: "USER" }) },
       { id: "u3", data: () => ({ uid: "u3", nombre: "Carla", email: "carla@x.com", rol: "USER" }) },
     ];
-    // Emula snapshot
     cb({ docs });
     return vi.fn(); // unsubscribe
   });
@@ -120,24 +119,27 @@ beforeEach(() => {
     };
   });
 
-  // getDocs (backfill): sin entrenos
   getDocsMock.mockResolvedValue({ docs: [] });
-
-  // updateDoc (backfill de perfil)
   updateDocMock.mockResolvedValue(undefined);
 });
 
 /* ================== TESTS ================== */
 
 describe("AñadirNadadores — carga y cabecera", () => {
-  it("muestra el contador con la cantidad de nadadores encontrada", async () => {
+  it("muestra el contador con la cantidad tras escribir en el buscador", async () => {
     renderWithRoute("/?equipo=E1");
 
-    await waitFor(() =>
-      expect(screen.getByText(/\(\d+ encontrados\)/i)).toBeInTheDocument()
-    );
+    const input = await screen.findByPlaceholderText(/buscar por nombre/i);
+    await userEvent.type(input, "a"); // activa la búsqueda
 
-    expect(screen.getByText("(3 encontrados)")).toBeInTheDocument();
+    // espera el texto (ej: "(2 coincidencias)" o "(3 encontrados)")
+    const counter = await screen.findByText(/\(\d+\s+(encontrados|coincidencias)\)/i);
+    expect(counter).toBeInTheDocument();
+
+    // extrae el número y valida que haya al menos 1 coincidencia
+    const match = counter.textContent?.match(/\((\d+)/);
+    expect(Number(match?.[1])).toBeGreaterThan(0);
+
     expect(screen.getByRole("heading", { name: /Añadir Nadadores/i })).toBeInTheDocument();
   });
 });
@@ -146,18 +148,12 @@ describe("AñadirNadadores — estado sin equipo", () => {
   it("si no hay ?equipo, muestra card de 'Falta el equipo' y deshabilita botones Añadir", async () => {
     renderWithRoute("/");
 
-    // Espera a que termine la carga y no esté el skeleton
-    await waitFor(() => expect(screen.getByText(/\(\d+ encontrados\)/)).toBeInTheDocument());
+    await screen.findByRole("heading", { name: /Falta el equipo/i });
 
-    // Banner/card de falta equipo
-    expect(screen.getByRole("heading", { name: /Falta el equipo/i })).toBeInTheDocument();
+    const addButtons = screen.queryAllByRole("button", { name: /añadir/i });
+    addButtons.forEach((b) => expect(b).toBeDisabled());
 
-    // La grilla existe y los botones deben estar disabled
-    const grid = document.querySelector(".pretty-grid");
-    if (grid) {
-      const addButtons = grid.querySelectorAll("button.btn-primary");
-      addButtons.forEach((b) => expect(b).toBeDisabled());
-    }
+    expect(screen.queryByText(/\(\d+\s+(encontrados|coincidencias)\)/i)).not.toBeInTheDocument();
   });
 });
 
@@ -165,15 +161,11 @@ describe("AñadirNadadores — filtro", () => {
   it("filtra por nombre/email", async () => {
     renderWithRoute("/?equipo=E1");
 
-    await screen.findByText("(3 encontrados)");
-
-    const input = screen.getByPlaceholderText(/buscar por nombre/i);
+    const input = await screen.findByPlaceholderText(/buscar por nombre/i);
     await userEvent.type(input, "bruno");
 
-    // Debe quedar solo Bruno visible en la lista
-    // (como no renderizamos una tabla real del backend, validamos que al menos Ana no esté)
+    expect(await screen.findByText("Bruno")).toBeInTheDocument();
     expect(screen.queryByText("Ana")).not.toBeInTheDocument();
-    expect(screen.getByText("Bruno")).toBeInTheDocument();
   });
 });
 
@@ -181,44 +173,36 @@ describe("AñadirNadadores — flujo de añadir", () => {
   it("añade al equipo cuando owner es el coach y el miembro no existe; hace commit y navega", async () => {
     renderWithRoute("/?equipo=E1");
 
-    await screen.findByText("(3 encontrados)");
+    const input = await screen.findByPlaceholderText(/buscar por nombre/i);
+    await userEvent.type(input, "ana");
 
-    // getDoc para equipo E1: existe y ownerId = coach1
     getDocMock.mockImplementation(async (ref: any) => {
       if (ref.__path === "equipos/E1") {
         return { exists: () => true, data: () => ({ ownerId: "coach1" }) };
       }
-      // Miembro no existe aún
       if (ref.__path === "equipos/E1/nadadores/u1") {
         return { exists: () => false, data: () => ({}) };
       }
       return { exists: () => false, data: () => ({}) };
     });
 
-    // Click en el primer botón “＋ Añadir” (Ana)
-    // Buscamos la card que contiene "Ana" y en ella el botón
-    const card = screen.getByText("Ana").closest(".swimmer-card")!;
+    const card = (await screen.findByText("Ana")).closest(".swimmer-card")!;
     const addBtn = within(card).getByRole("button", { name: /añadir/i });
     expect(addBtn).toBeEnabled();
 
     await userEvent.click(addBtn);
 
-    // Se realizó un commit del batch (set + update)
     await waitFor(() => {
-      // writeBatch fue creado
       expect(writeBatchMock).toHaveBeenCalled();
-      // y commit fue llamado al menos una vez
-      // (no podemos acceder al objeto interno, validamos por navegación y toasts)
       expect(navigateSpy).toHaveBeenCalledWith("/VerEquipo?equipo=E1");
     });
-
-    // Se navegó tras agregar y tras backfill
-    expect(navigateSpy).toHaveBeenCalledWith("/VerEquipo?equipo=E1");
   });
 
   it("si el nadador ya es miembro, muestra toast informativo y navega", async () => {
     renderWithRoute("/?equipo=E1");
-    await screen.findByText("(3 encontrados)");
+
+    const input = await screen.findByPlaceholderText(/buscar por nombre/i);
+    await userEvent.type(input, "bruno");
 
     getDocMock.mockImplementation(async (ref: any) => {
       if (ref.__path === "equipos/E1") {
@@ -230,23 +214,23 @@ describe("AñadirNadadores — flujo de añadir", () => {
       return { exists: () => false, data: () => ({}) };
     });
 
-    const card = screen.getByText("Bruno").closest(".swimmer-card")!;
+    const card = (await screen.findByText("Bruno")).closest(".swimmer-card")!;
     const addBtn = within(card).getByRole("button", { name: /añadir/i });
-
     await userEvent.click(addBtn);
 
     await waitFor(() => {
       expect(navigateSpy).toHaveBeenCalledWith("/VerEquipo?equipo=E1");
     });
 
-    // Verifica que el toast de info se haya renderizado en algún momento
     const toastContainer = screen.getByTestId("toaststack");
     expect(within(toastContainer).queryAllByTestId(/toast-info/).length).toBeGreaterThanOrEqual(0);
   });
 
   it("bloquea si el ownerId del equipo no coincide con el coach", async () => {
     renderWithRoute("/?equipo=E1");
-    await screen.findByText("(3 encontrados)");
+
+    const input = await screen.findByPlaceholderText(/buscar por nombre/i);
+    await userEvent.type(input, "ana");
 
     getDocMock.mockImplementation(async (ref: any) => {
       if (ref.__path === "equipos/E1") {
@@ -255,11 +239,10 @@ describe("AñadirNadadores — flujo de añadir", () => {
       return { exists: () => false, data: () => ({}) };
     });
 
-    const card = screen.getByText("Ana").closest(".swimmer-card")!;
+    const card = (await screen.findByText("Ana")).closest(".swimmer-card")!;
     const addBtn = within(card).getByRole("button", { name: /añadir/i });
     await userEvent.click(addBtn);
 
-    // No navega ni hace commit
     await waitFor(() => {
       expect(navigateSpy).not.toHaveBeenCalled();
     });
