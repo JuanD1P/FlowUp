@@ -4,41 +4,43 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import Admin from '../Admin';
 
-// ================
-// Mocks de assets/CSS
-// ================
+/* =======================
+   Mocks de assets/CSS
+   ======================= */
 vi.mock('../DOCSS/Admin.css', () => ({ default: {} }), { virtual: true });
 vi.mock('/image.png', () => ({ default: 'logo.png' }), { virtual: true });
 
-// Mock de react-router-dom (useNavigate)
+/* =======================
+   Mock react-router-dom (useNavigate)
+   ======================= */
 vi.mock('react-router-dom', async (orig) => {
   const actual = await orig();
   return { ...actual, useNavigate: () => vi.fn() };
 });
 
-// ================
-// SweetAlert2 (hoisted para evitar errores de hoisting)
-// ================
-const { fire } = vi.hoisted(() => {
-  return {
-    fire: vi.fn(async (opts?: any) => {
-      // Si se provee preConfirm (en eliminar usuario), ejecútalo.
-      if (opts?.preConfirm) {
-        await opts.preConfirm();
-      }
-      // Por defecto confirmamos en los tests que lo requieren
-      return { isConfirmed: true };
-    }),
-  };
-});
+/* =======================
+   Mock de SweetAlert2
+   - devolvemos confirmación positiva por defecto
+   - ejecutamos preConfirm cuando exista (eliminar)
+   ======================= */
+const { fire } = vi.hoisted(() => ({
+  fire: vi.fn(async (opts?: any) => {
+    if (opts?.preConfirm) {
+      await opts.preConfirm();
+    }
+    return { isConfirmed: true };
+  }),
+}));
 
 vi.mock('sweetalert2', () => ({
   default: { fire },
 }));
 
-// ================
-// axios (mock completo y expuesto)
-// ================
+/* =======================
+   Mock de axios
+   - hacemos que axios.create() devuelva un apiMock único
+   - exponemos un getter para accederlo en los tests
+   ======================= */
 vi.mock('axios', () => {
   const apiMock = {
     get: vi.fn(),
@@ -47,10 +49,12 @@ vi.mock('axios', () => {
     interceptors: { request: { use: vi.fn() } },
   };
   const create = vi.fn(() => apiMock);
+
   return {
     default: {
       create,
-      __apiMock: apiMock, // <- para acceder desde los tests
+      __getApiMock: () => apiMock,
+      // compatibilidad (no las usa Admin, pero evitamos errores)
       get: vi.fn(),
       put: vi.fn(),
       delete: vi.fn(),
@@ -60,35 +64,35 @@ vi.mock('axios', () => {
   };
 });
 
-beforeEach(() => {
-  // estado por defecto: lista inicial de usuarios (USER y USEREN)
-  const axiosMod = require('axios').default;
-  const apiMock = axiosMod.__apiMock as {
-    get: ReturnType<typeof vi.fn>;
-    put: ReturnType<typeof vi.fn>;
-    delete: ReturnType<typeof vi.fn>;
-  };
+/* =======================
+   beforeEach: estado inicial
+   ======================= */
+beforeEach(async () => {
+  const axiosMod: any = (await import('axios')).default;
+  const apiMock = axiosMod.__getApiMock();
 
   apiMock.get.mockReset();
   apiMock.put.mockReset();
   apiMock.delete.mockReset();
+  fire.mockClear();
 
+  // Respuesta por defecto del listado de usuarios
   apiMock.get.mockResolvedValue({
     data: [
       { id: 'u1', nombre: 'Ana', email: 'ana@example.com', rol: 'USER' },
       { id: 'u2', nombre: 'Luis', email: 'luis@example.com', rol: 'USEREN' },
     ],
   });
-
-  fire.mockClear();
 });
 
-describe('Admin — Cambio de roles', () => {
-  it('cambio de rol exitoso: abre confirmación, hace PUT y recarga usuarios', async () => {
-    const axiosMod = require('axios').default;
-    const apiMock = axiosMod.__apiMock as { put: any; get: any };
+/* =======================
+   TESTS
+   ======================= */
+describe('Admin — Gestión de usuarios', () => {
+  it('cambio de rol exitoso: muestra confirmación, PUT correcto y recarga lista', async () => {
+    const axiosMod: any = (await import('axios')).default;
+    const apiMock = axiosMod.__getApiMock();
 
-    // PUT exitoso
     apiMock.put.mockResolvedValue({ data: { ok: true } });
 
     render(
@@ -97,32 +101,32 @@ describe('Admin — Cambio de roles', () => {
       </MemoryRouter>
     );
 
-    // espera render con los 2 usuarios
+    // Cargó 2 usuarios
     expect(await screen.findByText(/2 usuarios/i)).toBeInTheDocument();
 
-    // fila de Ana (USER) → cambiar a ADMIN
-    const filaAna = screen.getAllByRole('row').find((r) => within(r).queryByText('Ana'))!;
+    // Cambiar rol de Ana (USER) a ADMIN
+    const filaAna = screen.getAllByRole('row').find(r => within(r).queryByText('Ana'))!;
     const selectAna = within(filaAna).getByRole('combobox');
 
     await userEvent.selectOptions(selectAna, 'ADMIN');
 
-    // se mostró el modal de SweetAlert
+    // Se abrió el Swal de confirmación
     expect(fire).toHaveBeenCalled();
 
-    // hizo PUT al endpoint correcto con el payload correcto
+    // PUT correcto
     await waitFor(() => {
       expect(apiMock.put).toHaveBeenCalledWith('/api/usuarios/u1/rol', { rol: 'ADMIN' });
     });
 
-    // y recarga usuarios (GET llamado 2 veces: carga + recarga)
+    // Recargó la lista (GET 2 veces: carga + recarga)
     await waitFor(() => {
       expect(apiMock.get).toHaveBeenCalledTimes(2);
     });
   });
 
   it('si selecciono el mismo rol no hace nada (no SweetAlert, no PUT)', async () => {
-    const axiosMod = require('axios').default;
-    const apiMock = axiosMod.__apiMock as { put: any };
+    const axiosMod: any = (await import('axios')).default;
+    const apiMock = axiosMod.__getApiMock();
 
     render(
       <MemoryRouter>
@@ -132,8 +136,8 @@ describe('Admin — Cambio de roles', () => {
 
     expect(await screen.findByText(/2 usuarios/i)).toBeInTheDocument();
 
-    // Luis ya es USEREN → seleccionar el mismo rol
-    const filaLuis = screen.getAllByRole('row').find((r) => within(r).queryByText('Luis'))!;
+    // Luis ya es USEREN → seleccionar USEREN de nuevo
+    const filaLuis = screen.getAllByRole('row').find(r => within(r).queryByText('Luis'))!;
     const selectLuis = within(filaLuis).getByRole('combobox');
 
     await userEvent.selectOptions(selectLuis, 'USEREN');
@@ -142,11 +146,10 @@ describe('Admin — Cambio de roles', () => {
     expect(apiMock.put).not.toHaveBeenCalled();
   });
 
-  it('error al cambiar rol: muestra alerta de error y NO recarga (solo 1 GET)', async () => {
-    const axiosMod = require('axios').default;
-    const apiMock = axiosMod.__apiMock as { put: any; get: any };
+  it('error al cambiar rol: muestra el Swal de error y NO recarga (solo 1 GET)', async () => {
+    const axiosMod: any = (await import('axios')).default;
+    const apiMock = axiosMod.__getApiMock();
 
-    // Forzamos error al actualizar rol
     apiMock.put.mockRejectedValueOnce({
       response: { data: { error: 'Intenta de nuevo' } },
     });
@@ -159,19 +162,18 @@ describe('Admin — Cambio de roles', () => {
 
     expect(await screen.findByText(/2 usuarios/i)).toBeInTheDocument();
 
-    const filaAna = screen.getAllByRole('row').find((r) => within(r).queryByText('Ana'))!;
+    const filaAna = screen.getAllByRole('row').find(r => within(r).queryByText('Ana'))!;
     const selectAna = within(filaAna).getByRole('combobox');
 
     await userEvent.selectOptions(selectAna, 'ADMIN');
 
-    expect(fire).toHaveBeenCalled(); // confirmación inicial
+    expect(fire).toHaveBeenCalled(); // confirmación
 
-    // intento de PUT con error
     await waitFor(() => {
       expect(apiMock.put).toHaveBeenCalledWith('/api/usuarios/u1/rol', { rol: 'ADMIN' });
     });
 
-    // NO se llamó un GET extra (sigue en 1: carga inicial)
+    // No hubo GET adicional (sigue 1 de carga inicial)
     expect(apiMock.get).toHaveBeenCalledTimes(1);
   });
 });
